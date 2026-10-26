@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.4';
+  var APP_VERSION = '1.5';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -44,7 +44,11 @@
     back: '<path d="M9 5l7 7-7 7"/>',
     next: '<path d="M15 5l-7 7 7 7"/>',
     open: '<path d="M12 5v14M5 12h14"/>',
-    close: '<path d="M5 12h14"/>'
+    close: '<path d="M5 12h14"/>',
+    gallery: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
+    meet: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 6a3 3 0 0 1 0 6M18 14.5c1.8.7 3 2.4 3 5.5"/>',
+    report: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>',
+    obs: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>'
   };
   function icon(name) {
     var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -102,7 +106,7 @@
   /** نداء دالة محمية: التوكن يروح كأول معامل. انتهاء الجلسة يرجّع لشاشة الدخول */
   function call(fn) {
     var args = Array.prototype.slice.call(arguments, 1);
-    return rpc(fn, [S.token].concat(args), fn.indexOf('upload') === 0 ? 180000 : 90000).then(function (res) {
+    return rpc(fn, [S.token].concat(args), (fn.indexOf('upload') === 0 || fn === 'saveMeeting') ? 180000 : 90000).then(function (res) {
       if (res && res.ok === false && res.code === 'AUTH') { sessionLost('انتهت جلستك، سجّل دخولك من جديد.'); }
       return res;
     });
@@ -379,8 +383,11 @@
       content.appendChild(h('div', { class: 'msg warn', text: 'ما عندك صفحات مفعّلة بالتطبيق الحين. كلّم المسؤول.' }));
     }
     if (has('dashboard')) content.insertBefore(h('a', { class: 'tile wide dashtile', href: '#/dash', style: 'margin-bottom:12px' }, icon('dash'), h('div', null, 'لوحة اليوم', h('small', { text: 'كم تصريح انفتح وانقفل اليوم وأمس' }))), content.children[1]);
+    var extra = [];
+    if (has('dashboard')) extra.push(h('a', { class: 'tile', href: '#/gallery' }, icon('gallery'), h('div', null, 'معرض الصور', h('small', { text: 'صور التصاريح والجولات' }))), h('a', { class: 'tile', href: '#/meetings' }, icon('meet'), h('div', null, 'الاجتماعات', h('small', { text: 'محضر جديد وسجل' }))));
+    if (has('admin')) extra.push(h('a', { class: 'tile', href: '#/emp' }, icon('report'), h('div', null, 'تقرير موظف', h('small', { text: 'فتح وإغلاق بالشهر' }))), h('a', { class: 'tile', href: '#/obs' }, icon('obs'), h('div', null, 'ملاحظات السلامة', h('small', { text: 'أداء الموظفين' }))));
+    if (extra.length) { content.appendChild(h('div', { class: 'sect', text: 'الأدوات الإدارية' })); content.appendChild(h('div', { class: 'tiles' }, extra)); }
     content.appendChild(h('div', { class: 'card' }, h('h2', { text: 'هذا الشهر' }), statsBox));
-    content.appendChild(h('div', { class: 'msg info', text: 'لوحة التصاريح والمعرض والاجتماعات والتقارير الإدارية قادمة بالتحديثات الجاية. إلى ذلك الوقت تقدر تفتحها من الموقع.' }));
     shell('home', 'نظام تصاريح العمل', content);
 
     if (has('mypage')) {
@@ -935,6 +942,248 @@
     }, 60000);
   }
 
+  // ======================= v1.5: معرض الصور / الاجتماعات / تقرير موظف / ملاحظات السلامة =======================
+  function pageHead(title, sub, cls) {
+    return h('section', { class: 'phero ' + (cls || '') }, h('a', { class: 'pback', href: '#/home', 'aria-label': 'الرئيسية' }, icon('back')), h('div', null, h('h2', { text: title }), sub ? h('p', { text: sub }) : null));
+  }
+  function field(label, node) { return h('div', { class: 'field' }, h('label', { text: label }), node); }
+  function errMsg(box, t) { box.className = 'msg err'; box.textContent = t; box.hidden = false; }
+  function openLink(url, text) { return h('a', { class: 'lnk', href: safeUrl(url) || '#', target: '_blank', rel: 'noopener' }, text || 'فتح'); }
+  function emptyNote(t) { return h('div', { class: 'empty' }, h('div', { class: 'em-ic', text: '∅' }), h('div', { text: t })); }
+
+  // ---------- المعرض (صلاحية dashboard) ----------
+  var G_KINDS = [['all', 'الكل'], ['permit_open', 'فتح تصاريح'], ['permit_close', 'إغلاق تصاريح'], ['round', 'جولات']];
+  var G_KIND_AR = { permit_open: 'فتح', permit_close: 'إغلاق', round: 'جولة' };
+  function pageGallery() {
+    var box = h('div'); shell('home', 'معرض الصور', box);
+    box.appendChild(pageHead('معرض الصور', 'صور التصاريح والجولات', 'g'));
+    var f = { kind: 'all', roundType: '', q: '', dateFrom: '', dateTo: '' };
+    var offset = 0, total = 0, busy = false, LIMIT = 24;
+    var seg = h('div', { class: 'pills' });
+    var q = h('input', { class: 'input', type: 'search', placeholder: 'بحث: رقم تصريح أو اسم أو وصف' });
+    var d1 = h('input', { class: 'input', type: 'date' }), d2 = h('input', { class: 'input', type: 'date' });
+    var rt = h('select', { class: 'input' }, h('option', { value: '', text: 'كل أنواع الجولات' }));
+    var grid = h('div', { class: 'ggrid' }), more = h('button', { class: 'btn ghost', type: 'button', hidden: true }, 'عرض المزيد'), info = h('div', { class: 'muted', style: 'margin:6px 2px' });
+    function drawSeg() {
+      clear(seg);
+      G_KINDS.forEach(function (k) { seg.appendChild(h('button', { type: 'button', class: 'pill' + (f.kind === k[0] ? ' on' : ''), onclick: function () { f.kind = k[0]; drawSeg(); load(true); } }, k[1])); });
+    }
+    box.appendChild(h('div', { class: 'card' }, seg, h('div', { class: 'row', style: 'margin-top:12px' }, field('من', d1), field('إلى', d2)), field('نوع الجولة', rt), q));
+    box.appendChild(info); box.appendChild(grid); box.appendChild(more);
+    var qt = null;
+    q.addEventListener('input', function () { clearTimeout(qt); qt = setTimeout(function () { f.q = q.value.trim(); load(true); }, 400); });
+    d1.addEventListener('change', function () { f.dateFrom = d1.value; load(true); });
+    d2.addEventListener('change', function () { f.dateTo = d2.value; load(true); });
+    rt.addEventListener('change', function () { f.roundType = rt.value; load(true); });
+    more.addEventListener('click', function () { load(false); });
+    function detail(it) {
+      var rows = [['النوع', G_KIND_AR[it.kind] || it.kind], ['الوقت', it.time], ['الموظف', it.empName || it.empId], it.ptw ? ['التصريح', it.ptw] : null,
+        it.roundType ? ['نوع الجولة', it.roundType] : null, it.levels ? ['الأدوار', it.levels] : null, it.zones ? ['الزونات', it.zones] : null, it.desc ? ['الوصف', it.desc] : null].filter(Boolean);
+      var items = [{ node: h('div', { class: 'details' }, rows.map(function (r) { return h('div', { class: 'drow' }, h('span', { class: 'k', text: r[0] }), h('span', { class: 'v' }, r[0] === 'التصريح' ? ltr(r[1]) : String(r[1]))); })) }];
+      var links = h('div', { class: 'row', style: 'margin-bottom:10px' });
+      if (it.fileUrl) links.appendChild(h('a', { class: 'btn sm', href: safeUrl(it.fileUrl) || '#', target: '_blank', rel: 'noopener' }, 'فتح الملف'));
+      if (it.folderUrl) links.appendChild(h('a', { class: 'btn sm ghost', href: safeUrl(it.folderUrl) || '#', target: '_blank', rel: 'noopener' }, 'المجلد'));
+      items.push({ node: links });
+      (it.extraUrls || []).slice(0, 8).forEach(function (u, i) { items.push({ node: openLink(u, 'ملف إضافي ' + (i + 1)) }); });
+      openSheet(it.title || 'التفاصيل', items);
+    }
+    function card(it) {
+      var th = h('div', { class: 'gth' });
+      if (it.thumb && safeUrl(it.thumb)) {
+        var im = h('img', { src: safeUrl(it.thumb), loading: 'lazy', alt: '', referrerpolicy: 'no-referrer' });
+        im.addEventListener('error', function () { im.remove(); th.appendChild(h('span', { class: 'gph', text: '▣' })); });
+        th.appendChild(im);
+      } else th.appendChild(h('span', { class: 'gph', text: '▣' }));
+      th.appendChild(h('span', { class: 'gk k-' + it.kind, text: G_KIND_AR[it.kind] || '' }));
+      return h('button', { class: 'gcard', type: 'button', onclick: function () { detail(it); } }, th,
+        h('div', { class: 'gmeta' }, h('b', null, it.ptw ? ltr(it.ptw) : (it.title || '')), h('small', { text: (it.empName || '') + ' · ' + String(it.time || '').substring(5, 16) })));
+    }
+    function load(reset) {
+      if (busy) return; busy = true;
+      if (reset) { offset = 0; clear(grid); for (var i = 0; i < 6; i++) grid.appendChild(h('div', { class: 'gcard sk' }, h('div', { class: 'gth skl' }))); more.hidden = true; }
+      more.disabled = true;
+      call('getGalleryData', { kind: f.kind, roundType: f.roundType, q: f.q, dateFrom: f.dateFrom, dateTo: f.dateTo, limit: LIMIT, offset: offset }).then(function (res) {
+        busy = false; more.disabled = false; if (!grid.isConnected) return;
+        if (reset) clear(grid);
+        if (!res || !res.ok) { if (res && res.code === 'AUTH') return; grid.appendChild(h('div', { class: 'msg err', style: 'grid-column:1/-1', text: (res && res.message) || 'تعذر جلب المعرض.' })); return; }
+        if (res.roundTypes && rt.options.length === 1) res.roundTypes.forEach(function (t) { rt.appendChild(h('option', { value: t, text: t })); });
+        (res.items || []).forEach(function (it) { grid.appendChild(card(it)); });
+        offset += (res.items || []).length; total = res.total || 0;
+        info.textContent = total ? ('النتائج: ' + total) : '';
+        if (!total) grid.appendChild(h('div', { style: 'grid-column:1/-1' }, emptyNote('ما فيه صور بهالفلتر.')));
+        more.hidden = offset >= total;
+      });
+    }
+    drawSeg(); load(true);
+  }
+
+  // ---------- الاجتماعات (صلاحية dashboard) ----------
+  function nowLocalDT() { var d = new Date(), p = function (n) { return (n < 10 ? '0' : '') + n; }; return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' + p(d.getHours()) + ':' + p(d.getMinutes()); }
+  function pageMeetings(sub) {
+    var box = h('div'); shell('home', 'الاجتماعات', box);
+    box.appendChild(pageHead('الاجتماعات', 'محاضر الاجتماعات وسجلها', 'm'));
+    var seg = h('div', { class: 'seg' },
+      h('button', { type: 'button', class: sub === 'log' ? '' : 'on', onclick: function () { location.hash = '#/meetings'; } }, 'اجتماع جديد'),
+      h('button', { type: 'button', class: sub === 'log' ? 'on' : '', onclick: function () { location.hash = '#/meetings/log'; } }, 'السجل'));
+    box.appendChild(seg);
+    var body = h('div'); box.appendChild(body);
+    if (sub === 'log') return meetingsLog(body);
+    meetingForm(body);
+  }
+  function meetingsLog(body) {
+    body.appendChild(spinnerBlock('جاري جلب السجل...'));
+    call('getRecentMeetings', { limit: 60 }).then(function (res) {
+      if (!body.isConnected) return; clear(body);
+      if (!res || !res.ok) { if (res && res.code === 'AUTH') return; return body.appendChild(h('div', { class: 'msg err', text: (res && res.message) || 'تعذر جلب السجل.' })); }
+      if (!res.meetings.length) return body.appendChild(emptyNote('ما فيه اجتماعات مسجلة لين الحين.'));
+      res.meetings.forEach(function (m) {
+        var parts = [m.dateTime, m.place, m.attendeesCount + ' حاضر', m.itemsCount ? m.itemsCount + ' بند' : '', m.photosCount ? m.photosCount + ' صورة' : '', m.empName ? 'سجّله: ' + m.empName : ''].filter(Boolean);
+        body.appendChild(h('div', { class: 'mcard' }, h('div', { class: 'mno' }, ltr(m.meetingNo)), h('div', { class: 'mbody' }, h('b', { text: m.project || '-' }), h('div', { class: 'sub', text: m.topic || '' }), h('div', { class: 'sub', text: parts.join(' · ') }), m.fileUrl ? openLink(m.fileUrl, 'فتح المحضر PDF') : null)));
+      });
+    });
+  }
+  function meetingForm(body) {
+    var P = h('input', { class: 'input', maxlength: '200' }), I = h('input', { class: 'input', maxlength: '200' }), D = h('input', { class: 'input', type: 'datetime-local', value: nowLocalDT() });
+    var PL = h('input', { class: 'input', maxlength: '200' }), T = h('textarea', { class: 'input', maxlength: '500' });
+    var att = h('div'), its = h('div');
+    function rowEl(host, fields, ph) {
+      var inputs = fields.map(function (k, i) { var el = h('input', { class: 'input sm', placeholder: ph[i], maxlength: '300' }); el.dataset.k = k; return el; });
+      var row = h('div', { class: 'mrow' }, h('div', { class: 'mfields' }, inputs), h('button', { type: 'button', class: 'rm', 'aria-label': 'حذف', onclick: function () { row.remove(); } }, '×'));
+      host.appendChild(row); return row;
+    }
+    function read(host, fields) {
+      var out = []; Array.prototype.forEach.call(host.children, function (row) {
+        var o = {}, any = false; fields.forEach(function (k) { var v = row.querySelector('[data-k="' + k + '"]').value.trim(); o[k] = v; if (v) any = true; }); if (any) out.push(o);
+      }); return out;
+    }
+    for (var i = 0; i < 3; i++) rowEl(att, ['name', 'title'], ['الاسم', 'الوظيفة']);
+    var files = h('input', { type: 'file', accept: 'image/*', multiple: true });
+    var msg = h('div', { hidden: true }), go = h('button', { class: 'btn', type: 'button' }, 'حفظ المحضر'), busy = false;
+    go.addEventListener('click', function () {
+      if (busy) return; msg.hidden = true;
+      var a = read(att, ['name', 'title']), it = read(its, ['item', 'action', 'owner']), fl = files.files ? Array.prototype.slice.call(files.files) : [];
+      if (!P.value.trim()) return errMsg(msg, 'اكتب اسم المشروع.');
+      if (!I.value.trim()) return errMsg(msg, 'اكتب الجهة الداعية للاجتماع.');
+      if (!D.value) return errMsg(msg, 'حدد تاريخ ووقت الاجتماع.');
+      if (!PL.value.trim()) return errMsg(msg, 'اكتب مكان الاجتماع.');
+      if (!T.value.trim()) return errMsg(msg, 'اكتب موضوع الاجتماع.');
+      if (!a.length) return errMsg(msg, 'أضف حاضر واحد على الأقل (اسم ووظيفة).');
+      if (!fl.length) return errMsg(msg, 'ارفع صورة ورقة التوقيعات على الأقل.');
+      if (fl.length > 15) return errMsg(msg, 'أقصى عدد صور 15.');
+      busy = true; btnBusy(go, true);
+      Promise.all(fl.map(filePayload)).then(function (ph) {
+        return call('saveMeeting', { project: P.value.trim(), inviter: I.value.trim(), dateTime: D.value.replace('T', ' '), place: PL.value.trim(), topic: T.value.trim(), attendees: a, items: it, photos: ph.map(function (x) { return { data: x.data, mime: x.mime }; }) });
+      }).then(function (res) {
+        busy = false; btnBusy(go, false, 'حفظ المحضر');
+        if (!res || !res.ok) { if (res && res.code === 'AUTH') return; return errMsg(msg, (res && res.message) || 'تعذر حفظ المحضر.'); }
+        clear(body);
+        body.appendChild(h('div', { class: 'card center' }, h('div', { class: 'okmark', text: '✓' }), h('h2', { text: 'تم حفظ المحضر' }), h('div', null, 'رقم الاجتماع: ', h('b', null, ltr(res.meetingNo))),
+          res.fileUrl ? h('a', { class: 'btn', href: safeUrl(res.fileUrl) || '#', target: '_blank', rel: 'noopener' }, 'فتح المحضر (PDF)') : null,
+          h('button', { class: 'btn ghost', type: 'button', onclick: function () { route(); } }, 'تسجيل اجتماع آخر')));
+      }).catch(function (e) { busy = false; btnBusy(go, false, 'حفظ المحضر'); errMsg(msg, 'تعذر معالجة الصور: ' + (e && e.message ? e.message : 'خطأ غير معروف')); });
+    });
+    body.appendChild(h('div', { class: 'card' }, field('المشروع', P), field('الجهة الداعية للاجتماع', I), field('تاريخ ووقت الاجتماع', D), field('مكان الاجتماع', PL), field('موضوع الاجتماع', T)));
+    body.appendChild(h('div', { class: 'card' }, h('h2', { text: 'الحضور' }), att, h('button', { type: 'button', class: 'btn ghost sm', onclick: function () { rowEl(att, ['name', 'title'], ['الاسم', 'الوظيفة']); } }, '+ إضافة حاضر')));
+    body.appendChild(h('div', { class: 'card' }, h('h2', { text: 'بنود الاجتماع (اختياري)' }), its, h('button', { type: 'button', class: 'btn ghost sm', onclick: function () { rowEl(its, ['item', 'action', 'owner'], ['البند', 'الإجراء', 'المسؤول']); } }, '+ إضافة بند')));
+    body.appendChild(h('div', { class: 'card' }, h('h2', { text: 'صور الاجتماع' }), h('div', { class: 'muted', style: 'margin-bottom:8px', text: 'ورقة التوقيعات بعد التوقيع أول شي، وأي صور إضافية. تتأرشف كلها بملف PDF واحد.' }), h('div', { class: 'file' }, files), go, msg));
+  }
+
+  // ---------- تقرير موظف (صلاحية admin) ----------
+  var MONTHS_AR = ['', 'يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+  function pageEmpReport(empId) {
+    var box = h('div'); shell('home', 'تقرير موظف', box);
+    box.appendChild(pageHead('تقرير موظف', 'كم فتح وكم قفل بالشهر', 'r'));
+    if (empId) return empDetail(box, empId);
+    var q = h('input', { class: 'input', type: 'search', placeholder: 'اسم الموظف أو رقمه الوظيفي' }), list = h('div');
+    box.appendChild(h('div', { class: 'card' }, q)); box.appendChild(list);
+    var t = null, seq = 0;
+    function search() {
+      var my = ++seq; clear(list); list.appendChild(spinnerBlock('بحث...'));
+      call('searchEmployees', q.value.trim()).then(function (res) {
+        if (my !== seq || !list.isConnected) return; clear(list);
+        if (!res || !res.ok) { if (res && res.code === 'AUTH') return; return list.appendChild(h('div', { class: 'msg err', text: (res && res.message) || 'تعذر البحث.' })); }
+        if (!res.results.length) return list.appendChild(emptyNote('ما لقيت أحد.'));
+        res.results.forEach(function (e) { list.appendChild(h('button', { class: 'list-item', type: 'button', onclick: function () { location.hash = '#/emp/' + encodeURIComponent(e.empId); } }, h('b', { text: e.name }), h('div', { class: 'sub' }, ltr(e.empId), ' · ' + (e.role || '')))); });
+      });
+    }
+    q.addEventListener('input', function () { clearTimeout(t); t = setTimeout(search, 350); });
+    search();
+  }
+  function empDetail(box, empId) {
+    var body = h('div'), cur = { y: 0, m: 0 }; box.appendChild(body);
+    function load(y, m) {
+      clear(body); body.appendChild(spinnerBlock('جاري تحميل التقرير...'));
+      call('getEmployeeReport', empId, y || undefined, m || undefined).then(function (r) {
+        if (!body.isConnected) return; clear(body);
+        if (!r || !r.ok) { if (r && r.code === 'AUTH') return; body.appendChild(h('div', { class: 'msg err', text: (r && r.message) || 'تعذر جلب التقرير.' })); body.appendChild(h('a', { class: 'btn gray', href: '#/emp' }, 'رجوع')); return; }
+        cur.y = r.year; cur.m = r.month;
+        function step(d) { var m2 = r.month + d, y2 = r.year; if (m2 < 1) { m2 = 12; y2--; } if (m2 > 12) { m2 = 1; y2++; } load(y2, m2); }
+        body.appendChild(h('div', { class: 'card' }, h('h2', { text: r.name }), h('div', { class: 'muted' }, ltr(r.empId), ' · ' + (r.role || ''))));
+        body.appendChild(h('div', { class: 'months' }, h('button', { class: 'icon-btn', type: 'button', onclick: function () { step(-1); } }, icon('back')), h('div', { class: 'lbl', text: MONTHS_AR[r.month] + ' ' + r.year }), h('button', { class: 'icon-btn', type: 'button', disabled: r.isCurrentMonth, onclick: function () { step(1); } }, icon('next'))));
+        body.appendChild(h('div', { class: 'stats' }, h('div', { class: 'stat' }, h('div', { class: 'n', text: r.openedCount }), h('div', { class: 'l', text: 'فتح' })), h('div', { class: 'stat' }, h('div', { class: 'n', text: r.closedCount }), h('div', { class: 'l', text: 'قفل بنفسه' }))));
+        var mx = 1; r.byDay.forEach(function (d) { mx = Math.max(mx, d.opened, d.closed); });
+        var days = h('div', { class: 'brows' });
+        r.byDay.forEach(function (d) { days.appendChild(h('div', { class: 'brow' }, h('div', { class: 'bl' }, h('span', { class: 'bn' }, ltr(d.date.substring(5))), h('span', { class: 'bv', text: 'فتح ' + d.opened + ' · قفل ' + d.closed })), h('div', { class: 'bt' }, h('i', { class: 'po', style: 'width:' + (d.opened / mx * 50) + '%' }), h('i', { class: 'pc', style: 'width:' + (d.closed / mx * 50) + '%' })))); });
+        body.appendChild(h('div', { class: 'card' }, h('h2', { text: 'توزيع الأيام' }), r.byDay.length ? days : emptyNote('ما فيه عمليات بهالشهر.')));
+        [['التصاريح اللي فتحها', r.openedList], ['التصاريح اللي قفلها', r.closedList]].forEach(function (s) {
+          if (!s[1].length) return;
+          var det = h('details', { class: 'card fold' }, h('summary', { text: s[0] + ' (' + s[1].length + ')' }));
+          s[1].forEach(function (x) { det.appendChild(h('div', { class: 'rowitem' }, h('b', null, ltr(x.ptw)), ' · ' + (x.company || '') + (x.location ? ' · ' + x.location : ''), h('div', { class: 'muted' }, ltr(x.time)))); });
+          body.appendChild(det);
+        });
+        body.appendChild(h('a', { class: 'btn gray', href: '#/emp' }, 'موظف ثاني'));
+      });
+    }
+    load(0, 0);
+  }
+
+  // ---------- ملاحظات السلامة (صلاحية admin) ----------
+  function pageObs(empId) {
+    var box = h('div'); shell('home', 'ملاحظات السلامة', box);
+    box.appendChild(pageHead('ملاحظات السلامة', 'قراءة حية من شيت الملاحظات', 'o'));
+    var body = h('div'); box.appendChild(body);
+    if (empId) return obsDetail(body, empId);
+    var info = h('div', { class: 'muted' }), rf = h('button', { class: 'btn ghost sm', type: 'button' }, 'تحديث الآن');
+    body.appendChild(h('div', { class: 'card' }, info, h('div', { style: 'margin-top:10px' }, rf)));
+    var list = h('div'); body.appendChild(list);
+    function loadAll() {
+      clear(list); list.appendChild(spinnerBlock('جاري قراءة الشيت...'));
+      Promise.all([call('getObsLiveInfo'), call('getObsEmployeeReport')]).then(function (rs) {
+        if (!list.isConnected) return; clear(list);
+        var a = rs[0], b = rs[1];
+        if (a && a.ok) info.textContent = 'إجمالي الملاحظات: ' + a.total + (a.latest ? ' · آخر ملاحظة ' + a.latest.substring(0, 16) : '');
+        if (!b || !b.ok) { if (b && b.code === 'AUTH') return; return list.appendChild(h('div', { class: 'msg err', text: (b && b.message) || 'تعذر قراءة الملاحظات.' })); }
+        var mx = (b.employees[0] && b.employees[0].total) || 1;
+        b.employees.forEach(function (e, i) {
+          var risks = Object.keys(e.byRisk).map(function (k) { return k + ' ' + e.byRisk[k]; }).join(' · ');
+          list.appendChild(h('button', { class: 'list-item', type: 'button', onclick: function () { location.hash = '#/obs/' + encodeURIComponent(e.id); } },
+            h('div', { class: 'bl' }, h('b', { text: (i + 1) + '. ' + e.name }), h('span', { class: 'bv', text: e.total })), h('div', { class: 'bt' }, h('i', { class: 'po', style: 'width:' + (e.total / mx * 100) + '%' })), h('div', { class: 'sub' }, ltr(e.id), risks ? ' · ' + risks : '')));
+        });
+      });
+    }
+    rf.addEventListener('click', function () { btnBusy(rf, true); call('refreshObsCache').then(function (r) { btnBusy(rf, false, 'تحديث الآن'); if (r && r.ok) { toast('تم التحديث'); loadAll(); } else if (!r || r.code !== 'AUTH') toast((r && r.message) || 'تعذر التحديث'); }); });
+    loadAll();
+  }
+  function obsDetail(body, empId) {
+    body.appendChild(spinnerBlock('جاري التحميل...'));
+    call('getObsEmployeeDetail', empId).then(function (r) {
+      if (!body.isConnected) return; clear(body);
+      if (!r || !r.ok) { if (r && r.code === 'AUTH') return; body.appendChild(h('div', { class: 'msg err', text: (r && r.message) || 'تعذر الجلب.' })); }
+      else {
+        body.appendChild(h('div', { class: 'card' }, h('h2', { text: r.name || r.id }), h('div', { class: 'muted' }, ltr(r.id), ' · ' + r.detail.length + ' ملاحظة')));
+        if (!r.detail.length) body.appendChild(emptyNote('ما فيه ملاحظات.'));
+        r.detail.forEach(function (o) {
+          body.appendChild(h('div', { class: 'card obs' }, h('div', { class: 'bl' }, h('b', { text: o.category || 'ملاحظة' }), h('span', { class: 'tag risk', text: o.risk || '' })),
+            h('div', { class: 'sub muted' }, ltr(o.time.substring(0, 16)), (o.zone ? ' · ' + o.zone : '') + (o.shift ? ' · ' + o.shift : '')),
+            o.type ? h('div', { text: o.type }) : null, o.description ? h('div', { class: 'muted', text: o.description }) : null,
+            o.correctiveAction ? h('div', { class: 'msg ok', text: 'الإجراء: ' + o.correctiveAction }) : null,
+            h('div', { class: 'row', style: 'margin-top:8px' }, o.photoBefore ? openLink(o.photoBefore, 'قبل') : null, o.photoAfter ? openLink(o.photoAfter, 'بعد') : null)));
+        });
+      }
+      body.appendChild(h('a', { class: 'btn gray', href: '#/obs' }, 'رجوع'));
+    });
+  }
+
   // ======================= التوجيه والإقلاع =======================
   function route() {
     if (!apiBase()) return renderSetup(false);
@@ -944,6 +1193,12 @@
     if ((key === 'site' || key === 'photos') && !has('site')) key = 'home';
     if (key === 'me' && !has('mypage')) key = 'home';
     if (key === 'dash' && !has('dashboard')) key = 'home';
+    if ((key === 'gallery' || key === 'meetings') && !has('dashboard')) key = 'home';
+    if ((key === 'emp' || key === 'obs') && !has('admin')) key = 'home';
+    if (key === 'gallery') return pageGallery();
+    if (key === 'meetings') return pageMeetings(parts[1]);
+    if (key === 'emp') return pageEmpReport(parts[1] ? decodeURIComponent(parts[1]) : '');
+    if (key === 'obs') return pageObs(parts[1] ? decodeURIComponent(parts[1]) : '');
     if (key === 'site') return pageSite(parts[1]);
     if (key === 'photos') return pagePhotos();
     if (key === 'me') return pageMe();
