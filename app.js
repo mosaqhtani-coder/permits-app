@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.3';
+  var APP_VERSION = '1.4';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -636,7 +636,7 @@
     }
     function rounds() {
       clear(box);
-      var type = h('select', { class: 'input', id: 'rType' }, h('option', { value: '', text: '— اختر نوع الصور —' }), ROUND_TYPES.map(function (t) { return h('option', { value: t, text: t }); }));
+      var type = chipGroup(ROUND_TYPES);   // v1.4: اختيار متعدد لنوع الصور
       var lv = chipGroup(LEVELS), zn = chipGroup(ZONES, function (z) { return typeof z === 'number' ? 'زون ' + z : z; });
       var desc = h('textarea', { class: 'input', maxlength: '500', placeholder: 'وصف (اختياري)' });
       var files = h('input', { type: 'file', accept: 'image/*,video/*,application/pdf', multiple: true });
@@ -648,21 +648,22 @@
         var levels = lv.values(), zones = zn.values(), fl = files.files ? Array.prototype.slice.call(files.files) : [];
         function err(t) { msg.className = 'msg err'; msg.textContent = t; msg.hidden = false; }
         if (!levels.length && !zones.length) return err('اختر دور أو زون واحد على الأقل.');
-        if (!type.value) return err('اختر نوع الصور.');
+        var types = type.values();
+        if (!types.length) return err('اختر نوع واحد على الأقل من أنواع الصور.');
         if (!fl.length) return err('اختر ملف واحد على الأقل.');
         if (fl.length > 20) return err('أقصى عدد ملفات بالمرة الواحدة 20.');
         busy = true; btnBusy(go, true); back.disabled = true; msg.hidden = true;
         Promise.all(fl.map(filePayload)).then(function (photos) {
-          return call('uploadRoundPhotos', { levels: levels, zones: zones, roundType: type.value, description: desc.value.trim(), photos: photos });
+          return call('uploadRoundPhotos', { levels: levels, zones: zones, roundType: types, description: desc.value.trim(), photos: photos });
         }).then(function (res) {
           busy = false; btnBusy(go, false, 'رفع'); back.disabled = false;
           if (!res || !res.ok) { if (res && res.code === 'AUTH') return; return err((res && res.message) || 'تعذر حفظ الملفات. حاول مرة ثانية.'); }
           msg.className = 'msg ok'; msg.textContent = 'تم حفظ ' + res.count + ' ملف بنجاح.'; msg.hidden = false;
-          lv.reset(); zn.reset(); type.value = ''; desc.value = ''; files.value = '';
+          lv.reset(); zn.reset(); type.reset(); desc.value = ''; files.value = '';
         }).catch(function (e) { busy = false; btnBusy(go, false, 'رفع'); back.disabled = false; err('تعذر معالجة الملفات: ' + (e && e.message ? e.message : 'خطأ غير معروف')); });
       });
       box.appendChild(h('div', { class: 'card' }, h('h2', { text: 'صور جولات ومتابعة أعمال' }),
-        h('div', { class: 'field' }, h('label', { for: 'rType', text: 'نوع الصور' }), type),
+        h('div', { class: 'field' }, h('label', { text: 'نوع الصور (تقدر تختار أكثر من نوع)' }), type.node),
         h('div', { class: 'field' }, h('label', { text: 'الأدوار' }), lv.node),
         h('div', { class: 'field' }, h('label', { text: 'الزونات' }), zn.node),
         h('div', { class: 'field' }, h('label', { text: 'وصف' }), desc),
