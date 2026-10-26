@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.5';
+  var APP_VERSION = '1.6';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -1146,19 +1146,24 @@
     var info = h('div', { class: 'muted' }), rf = h('button', { class: 'btn ghost sm', type: 'button' }, 'تحديث الآن');
     body.appendChild(h('div', { class: 'card' }, info, h('div', { style: 'margin-top:10px' }, rf)));
     var list = h('div'); body.appendChild(list);
+    var OBS_LS = 'ptw_obs_list';
+    function draw(b, fromCache) {
+      clear(list);
+      if (b.total !== undefined) info.textContent = 'إجمالي الملاحظات: ' + b.total + (b.latest ? ' · آخر ملاحظة ' + b.latest.substring(0, 16) : '') + (fromCache ? ' · (آخر نسخة محفوظة، جاري التحديث...)' : '');
+      var mx = (b.employees[0] && b.employees[0].total) || 1;
+      b.employees.forEach(function (e, i) {
+        var risks = Object.keys(e.byRisk).map(function (k) { return k + ' ' + e.byRisk[k]; }).join(' · ');
+        list.appendChild(h('button', { class: 'list-item', type: 'button', onclick: function () { location.hash = '#/obs/' + encodeURIComponent(e.id); } },
+          h('div', { class: 'bl' }, h('b', { text: (i + 1) + '. ' + e.name }), h('span', { class: 'bv', text: e.total })), h('div', { class: 'bt' }, h('i', { class: 'po', style: 'width:' + (e.total / mx * 100) + '%' })), h('div', { class: 'sub' }, ltr(e.id), risks ? ' · ' + risks : '')));
+      });
+    }
     function loadAll() {
-      clear(list); list.appendChild(spinnerBlock('جاري قراءة الشيت...'));
-      Promise.all([call('getObsLiveInfo'), call('getObsEmployeeReport')]).then(function (rs) {
-        if (!list.isConnected) return; clear(list);
-        var a = rs[0], b = rs[1];
-        if (a && a.ok) info.textContent = 'إجمالي الملاحظات: ' + a.total + (a.latest ? ' · آخر ملاحظة ' + a.latest.substring(0, 16) : '');
-        if (!b || !b.ok) { if (b && b.code === 'AUTH') return; return list.appendChild(h('div', { class: 'msg err', text: (b && b.message) || 'تعذر قراءة الملاحظات.' })); }
-        var mx = (b.employees[0] && b.employees[0].total) || 1;
-        b.employees.forEach(function (e, i) {
-          var risks = Object.keys(e.byRisk).map(function (k) { return k + ' ' + e.byRisk[k]; }).join(' · ');
-          list.appendChild(h('button', { class: 'list-item', type: 'button', onclick: function () { location.hash = '#/obs/' + encodeURIComponent(e.id); } },
-            h('div', { class: 'bl' }, h('b', { text: (i + 1) + '. ' + e.name }), h('span', { class: 'bv', text: e.total })), h('div', { class: 'bt' }, h('i', { class: 'po', style: 'width:' + (e.total / mx * 100) + '%' })), h('div', { class: 'sub' }, ltr(e.id), risks ? ' · ' + risks : '')));
-        });
+      var cached = null; try { cached = JSON.parse(lsGet(OBS_LS) || 'null'); } catch (e) {}
+      if (cached && cached.employees) draw(cached, true); else { clear(list); list.appendChild(spinnerBlock('جاري قراءة الشيت (أول مرة تاخذ شوي)...')); }
+      call('getObsEmployeeReport').then(function (b) {
+        if (!list.isConnected) return;
+        if (!b || !b.ok) { if (b && b.code === 'AUTH') return; if (cached && cached.employees) { toast((b && b.message) || 'تعذر التحديث'); return; } clear(list); return list.appendChild(h('div', { class: 'msg err', text: (b && b.message) || 'تعذر قراءة الملاحظات.' })); }
+        lsSet(OBS_LS, JSON.stringify(b)); draw(b, false);
       });
     }
     rf.addEventListener('click', function () { btnBusy(rf, true); call('refreshObsCache').then(function (r) { btnBusy(rf, false, 'تحديث الآن'); if (r && r.ok) { toast('تم التحديث'); loadAll(); } else if (!r || r.code !== 'AUTH') toast((r && r.message) || 'تعذر التحديث'); }); });
