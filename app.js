@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.0';
+  var APP_VERSION = '1.2';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -974,7 +974,14 @@
   }
 
   if ('serviceWorker' in navigator && location.protocol === 'https:') {
-    window.addEventListener('load', function () { navigator.serviceWorker.register('sw.js').catch(function () {}); });
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js', { updateViaCache: 'none' }).then(function (reg) {
+        try { reg.update(); } catch (e) {}
+        document.addEventListener('visibilitychange', function () { if (!document.hidden) { try { reg.update(); } catch (e) {} } });
+      }).catch(function () {});
+      var had = !!navigator.serviceWorker.controller, done = false;
+      navigator.serviceWorker.addEventListener('controllerchange', function () { if (had && !done) { done = true; location.reload(); } });
+    });
   }
   boot();
 })();
