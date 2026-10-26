@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.2';
+  var APP_VERSION = '1.3';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -865,14 +865,13 @@
           h('div', { class: 'kp c' }, nClosed, h('div', { class: 'kl', text: 'انقفلت' })),
           h('div', { class: 'kp n' }, nNow, h('div', { class: 'kl', text: 'مفتوحة الحين' }))),
         h('div', { class: 'hero-foot' },
-          T.opened ? ('من اللي انفتحت اليوم، ' + T.stillOpen + ' لسا مفتوحة' + (T.flagged ? ' · ' + T.flagged + ' بتنبيه' : '')) : 'ما انفتح شي لين الحين')));
+          T.opened ? ('نهاية اليوم اللي ما قفله موظف ينحسب انقفل تلقائي ويبدأ اليوم الجديد من صفر' + (T.flagged ? ' · ' + T.flagged + ' بتنبيه' : '')) : 'ما انفتح شي لين الحين')));
       countUp(nOpen, T.opened); countUp(nClosed, T.closed); countUp(nNow, N.openNow);
 
       // --- تنبيه ---
-      if (N.overdue || N.validNotOpened) {
+      if (N.validNotOpened) {
         body.appendChild(h('div', { class: 'alerts' },
-          N.overdue ? h('div', { class: 'al bad' }, h('b', { text: N.overdue }), ' منتهية ولم تُغلق') : null,
-          N.validNotOpened ? h('div', { class: 'al' }, h('b', { text: N.validNotOpened }), ' سارية ولم تُفتح') : null));
+          h('div', { class: 'al' }, h('b', { text: N.validNotOpened }), ' سارية ولم تُفتح اليوم')));
       }
 
       // --- أمس ---
@@ -881,15 +880,15 @@
         return h('div', { class: 'pitem' }, h('div', null, h('b', null, ltr(p.ptw)), p.company ? ' · ' + p.company : ''),
           h('div', { class: 'muted' }, [p.location, p.by ? ' · فتحه ' + p.by : '', ' · ', ltr(String(p.time).substring(11, 16))]));
       }));
-      var pbtn = Y.stillOpen ? h('button', { class: 'btn ghost sm', type: 'button', style: 'margin-top:12px', onclick: function () { pendBox.hidden = !pendBox.hidden; pbtn.textContent = pendBox.hidden ? 'عرض اللي لسا ما انقفل (' + Y.stillOpen + ')' : 'إخفاء القائمة'; } }, 'عرض اللي لسا ما انقفل (' + Y.stillOpen + ')') : null;
+      var pbtn = Y.stillOpen ? h('button', { class: 'btn ghost sm', type: 'button', style: 'margin-top:12px', onclick: function () { pendBox.hidden = !pendBox.hidden; pbtn.textContent = pendBox.hidden ? 'عرض اللي ما قفله موظف (' + Y.stillOpen + ')' : 'إخفاء القائمة'; } }, 'عرض اللي ما قفله موظف (' + Y.stillOpen + ')') : null;
       body.appendChild(h('section', { class: 'card ycard' },
         h('div', { class: 'ytitle' }, h('h2', { text: 'أمس' }), h('span', { class: 'muted' }, ltr(Y.date))),
         h('div', { class: 'yrow' }, ring(Y.closedOfOpened, Y.opened),
           h('div', { class: 'ytext' },
             h('div', { class: 'ybig' }, h('b', { text: Y.opened }), ' انفتحت'),
-            h('div', { class: 'ybig ok' }, h('b', { text: Y.closedOfOpened }), ' منها انقفلت'),
-            h('div', { class: 'ybig ' + (Y.stillOpen ? 'bad' : 'ok') }, h('b', { text: Y.stillOpen }), ' لسا مفتوحة'),
-            h('div', { class: 'muted', style: 'margin-top:6px' }, 'اللي انقفل بنفس اليوم أو بعده، لين الحين.'))),
+            h('div', { class: 'ybig ok' }, h('b', { text: Y.closedOfOpened }), ' قفلها موظف'),
+            h('div', { class: 'ybig ' + (Y.stillOpen ? 'bad' : 'ok') }, h('b', { text: Y.stillOpen }), ' انقفلت تلقائي (ما قفلها موظف)'),
+            h('div', { class: 'muted', style: 'margin-top:6px' }, 'كل يوم بيومه: اللي ما قفله موظف نهاية اليوم ينحسب انقفل تلقائي.'))),
         pbtn, pendBox));
 
       // --- بالساعة ---
