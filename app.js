@@ -38,6 +38,7 @@
     home: '<path d="M3 11l9-8 9 8v9a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
     site: '<path d="M9 3h6l1 2h3a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h3z"/><path d="M8.5 13l2.5 2.5L16 10"/>',
     photos: '<path d="M4 7h3l1.5-2h7L17 7h3a1 1 0 0 1 1 1v11a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1z"/><circle cx="12" cy="13" r="3.8"/>',
+    dash: '<path d="M4 20V10M10 20V4M16 20v-8M22 20H2"/>',
     me: '<circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
     menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
     back: '<path d="M9 5l7 7-7 7"/>',
@@ -176,6 +177,7 @@
   // ======================= الهيكل العام =======================
   var NAV = [
     { key: 'home', label: 'الرئيسية', icon: 'home', perm: 'any' },
+    { key: 'dash', label: 'اللوحة', icon: 'dash', perm: 'dashboard' },
     { key: 'site', label: 'تسجيل', icon: 'site', perm: 'site' },
     { key: 'photos', label: 'الصور', icon: 'photos', perm: 'site' },
     { key: 'me', label: 'صفحتي', icon: 'me', perm: 'mypage' }
@@ -376,6 +378,7 @@
     } else {
       content.appendChild(h('div', { class: 'msg warn', text: 'ما عندك صفحات مفعّلة بالتطبيق الحين. كلّم المسؤول.' }));
     }
+    if (has('dashboard')) content.insertBefore(h('a', { class: 'tile wide dashtile', href: '#/dash', style: 'margin-bottom:12px' }, icon('dash'), h('div', null, 'لوحة اليوم', h('small', { text: 'كم تصريح انفتح وانقفل اليوم وأمس' }))), content.children[1]);
     content.appendChild(h('div', { class: 'card' }, h('h2', { text: 'هذا الشهر' }), statsBox));
     content.appendChild(h('div', { class: 'msg info', text: 'لوحة التصاريح والمعرض والاجتماعات والتقارير الإدارية قادمة بالتحديثات الجاية. إلى ذلك الوقت تقدر تفتحها من الموقع.' }));
     shell('home', 'نظام تصاريح العمل', content);
@@ -771,6 +774,167 @@
     load();
   }
 
+
+  // ======================= لوحة اليوم (صلاحية dashboard) =======================
+  var DASH_LS = 'ptw_dash_cache';
+  function nfmt(n) { return String(n === null || n === undefined ? 0 : n); }
+  function countUp(el, to) {
+    to = Number(to) || 0;
+    if (!window.requestAnimationFrame || (window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) || to === 0) { el.textContent = nfmt(to); return; }
+    var t0 = null, dur = 650;
+    function step(ts) {
+      if (!el.isConnected) return;
+      if (t0 === null) t0 = ts;
+      var k = Math.min(1, (ts - t0) / dur), e = 1 - Math.pow(1 - k, 3);
+      el.textContent = nfmt(Math.round(to * e));
+      if (k < 1) requestAnimationFrame(step);
+    }
+    requestAnimationFrame(step);
+  }
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function sv(tag, attrs, kids) {
+    var el = document.createElementNS(SVGNS, tag);
+    Object.keys(attrs || {}).forEach(function (k) { el.setAttribute(k, attrs[k]); });
+    (kids || []).forEach(function (c) { if (c) el.appendChild(c); });
+    return el;
+  }
+  function ring(done, total) {
+    var R = 52, C = 2 * Math.PI * R, pct = total ? done / total : 0;
+    var arc = sv('circle', { cx: 70, cy: 70, r: R, fill: 'none', 'stroke-width': 14, 'stroke-linecap': 'round', class: 'ring-fg', transform: 'rotate(-90 70 70)', 'stroke-dasharray': C.toFixed(1), 'stroke-dashoffset': C.toFixed(1) });
+    var svg = sv('svg', { viewBox: '0 0 140 140', class: 'ring', role: 'img', 'aria-label': 'نسبة الإغلاق ' + Math.round(pct * 100) + '%' }, [
+      sv('circle', { cx: 70, cy: 70, r: R, fill: 'none', 'stroke-width': 14, class: 'ring-bg' }), arc]);
+    var t = sv('text', { x: 70, y: 76, 'text-anchor': 'middle', class: 'ring-t' }); t.textContent = total ? Math.round(pct * 100) + '%' : '-';
+    svg.appendChild(t);
+    setTimeout(function () { arc.setAttribute('stroke-dashoffset', (C * (1 - pct)).toFixed(1)); }, 60);
+    return svg;
+  }
+  function hoursChart(hours, curHour) {
+    var W = 336, H = 150, padB = 20, padT = 8, bw = 5.5, gap = (W - 24 * bw * 2) / 24;
+    var max = 1; hours.forEach(function (x) { max = Math.max(max, x.o, x.c); });
+    var svg = sv('svg', { viewBox: '0 0 ' + W + ' ' + H, class: 'hchart', role: 'img', 'aria-label': 'النشاط بالساعة' });
+    [0.5, 1].forEach(function (f) {
+      var y = H - padB - (H - padB - padT) * f;
+      svg.appendChild(sv('line', { x1: 0, x2: W, y1: y, y2: y, class: 'grid' }));
+    });
+    hours.forEach(function (x, i) {
+      var x0 = i * (bw * 2 + gap) + gap / 2;
+      var hO = (H - padB - padT) * x.o / max, hC = (H - padB - padT) * x.c / max;
+      if (curHour === i) svg.appendChild(sv('rect', { x: x0 - 2, y: padT, width: bw * 2 + 4, height: H - padB - padT, rx: 4, class: 'nowband' }));
+      if (x.o) svg.appendChild(sv('rect', { x: x0, y: H - padB - hO, width: bw, height: hO, rx: 2, class: 'bar-o' }));
+      if (x.c) svg.appendChild(sv('rect', { x: x0 + bw, y: H - padB - hC, width: bw, height: hC, rx: 2, class: 'bar-c' }));
+      if (i % 3 === 0) { var tx = sv('text', { x: x0 + bw, y: H - 5, 'text-anchor': 'middle', class: 'ax' }); tx.textContent = i; svg.appendChild(tx); }
+    });
+    var wrap = h('div', { class: 'hwrap', dir: 'ltr' }); wrap.appendChild(svg); return wrap;
+  }
+  function barRows(rows, max) {
+    return h('div', { class: 'brows' }, rows.map(function (r) {
+      return h('div', { class: 'brow' },
+        h('div', { class: 'bl' }, h('span', { class: 'bn', text: r.name }), h('span', { class: 'bv' }, r.value)),
+        h('div', { class: 'bt' }, r.parts.map(function (p) { return h('i', { class: p.cls, style: 'width:' + Math.max(p.n ? 3 : 0, Math.round(100 * p.n / (max || 1))) + '%' }); })));
+    }));
+  }
+
+  function pageDash() {
+    var box = h('div');
+    shell('dash', 'لوحة اليوم', box);
+    var timer = null, loading = false;
+    var cached = null; try { cached = JSON.parse(lsGet(DASH_LS) || 'null'); } catch (e) {}
+
+    var body = h('div');
+    var stamp = h('span', { class: 'muted', text: '' });
+    var rbtn = h('button', { class: 'icon-btn rfs', type: 'button', 'aria-label': 'تحديث' }, h('span', { text: '↻' }));
+    box.appendChild(h('div', { class: 'dash-head' }, stamp, rbtn));
+    box.appendChild(body);
+
+    function skeleton() {
+      clear(body);
+      for (var i = 0; i < 3; i++) body.appendChild(h('div', { class: 'card sk' }, h('div', { class: 'skl w60' }), h('div', { class: 'skl w90' }), h('div', { class: 'skl w40' })));
+    }
+    function draw(d, fromCache) {
+      clear(body);
+      var T = d.today, Y = d.yesterday, N = d.now || {};
+      var cur = parseInt((d.generatedAt || '').substring(11, 13), 10);
+      stamp.textContent = (fromCache ? 'آخر نسخة محفوظة · ' : 'تحدّثت ') + (d.generatedAt || '').substring(11, 16);
+
+      // --- اليوم ---
+      var nOpen = h('div', { class: 'big', text: '0' }), nClosed = h('div', { class: 'big', text: '0' }), nNow = h('div', { class: 'big', text: '0' });
+      body.appendChild(h('section', { class: 'hero' },
+        h('div', { class: 'hero-top' }, h('b', { text: 'اليوم' }), h('span', null, ltr(T.date))),
+        h('div', { class: 'trio' },
+          h('div', { class: 'kp o' }, nOpen, h('div', { class: 'kl', text: 'انفتحت' })),
+          h('div', { class: 'kp c' }, nClosed, h('div', { class: 'kl', text: 'انقفلت' })),
+          h('div', { class: 'kp n' }, nNow, h('div', { class: 'kl', text: 'مفتوحة الحين' }))),
+        h('div', { class: 'hero-foot' },
+          T.opened ? ('من اللي انفتحت اليوم، ' + T.stillOpen + ' لسا مفتوحة' + (T.flagged ? ' · ' + T.flagged + ' بتنبيه' : '')) : 'ما انفتح شي لين الحين')));
+      countUp(nOpen, T.opened); countUp(nClosed, T.closed); countUp(nNow, N.openNow);
+
+      // --- تنبيه ---
+      if (N.overdue || N.validNotOpened) {
+        body.appendChild(h('div', { class: 'alerts' },
+          N.overdue ? h('div', { class: 'al bad' }, h('b', { text: N.overdue }), ' منتهية ولم تُغلق') : null,
+          N.validNotOpened ? h('div', { class: 'al' }, h('b', { text: N.validNotOpened }), ' سارية ولم تُفتح') : null));
+      }
+
+      // --- أمس ---
+      var pend = Y.pending || [];
+      var pendBox = h('div', { class: 'pend', hidden: true }, pend.map(function (p) {
+        return h('div', { class: 'pitem' }, h('div', null, h('b', null, ltr(p.ptw)), p.company ? ' · ' + p.company : ''),
+          h('div', { class: 'muted' }, [p.location, p.by ? ' · فتحه ' + p.by : '', ' · ', ltr(String(p.time).substring(11, 16))]));
+      }));
+      var pbtn = Y.stillOpen ? h('button', { class: 'btn ghost sm', type: 'button', style: 'margin-top:12px', onclick: function () { pendBox.hidden = !pendBox.hidden; pbtn.textContent = pendBox.hidden ? 'عرض اللي لسا ما انقفل (' + Y.stillOpen + ')' : 'إخفاء القائمة'; } }, 'عرض اللي لسا ما انقفل (' + Y.stillOpen + ')') : null;
+      body.appendChild(h('section', { class: 'card ycard' },
+        h('div', { class: 'ytitle' }, h('h2', { text: 'أمس' }), h('span', { class: 'muted' }, ltr(Y.date))),
+        h('div', { class: 'yrow' }, ring(Y.closedOfOpened, Y.opened),
+          h('div', { class: 'ytext' },
+            h('div', { class: 'ybig' }, h('b', { text: Y.opened }), ' انفتحت'),
+            h('div', { class: 'ybig ok' }, h('b', { text: Y.closedOfOpened }), ' منها انقفلت'),
+            h('div', { class: 'ybig ' + (Y.stillOpen ? 'bad' : 'ok') }, h('b', { text: Y.stillOpen }), ' لسا مفتوحة'),
+            h('div', { class: 'muted', style: 'margin-top:6px' }, 'اللي انقفل بنفس اليوم أو بعده، لين الحين.'))),
+        pbtn, pendBox));
+
+      // --- بالساعة ---
+      body.appendChild(h('section', { class: 'card' }, h('h2', { text: 'نشاط اليوم بالساعة' }),
+        hoursChart(T.hours, cur),
+        h('div', { class: 'legend' }, h('span', null, h('i', { class: 'lg o' }), 'فتح'), h('span', null, h('i', { class: 'lg c' }), 'إغلاق'))));
+
+      // --- ورديات ---
+      var shifts = Object.keys(T.byShift || {});
+      if (shifts.length) {
+        var mx = 1; shifts.forEach(function (k) { mx = Math.max(mx, T.byShift[k].o + T.byShift[k].c); });
+        body.appendChild(h('section', { class: 'card' }, h('h2', { text: 'حسب الوردية (اليوم)' }),
+          barRows(shifts.map(function (k) { var s = T.byShift[k]; return { name: k, value: s.o + ' فتح · ' + s.c + ' إغلاق', parts: [{ cls: 'po', n: s.o }, { cls: 'pc', n: s.c }] }; }), mx)));
+      }
+      // --- شركات ---
+      if (T.topCompanies && T.topCompanies.length) {
+        var mc = T.topCompanies[0].n;
+        body.appendChild(h('section', { class: 'card' }, h('h2', { text: 'أكثر الشركات فتحاً اليوم' }),
+          barRows(T.topCompanies.map(function (c) { return { name: c.name, value: c.n, parts: [{ cls: 'po', n: c.n }] }; }), mc)));
+      }
+      body.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:6px 0 2px' }, 'نفس أرقام لوحة الموقع. العدّ بعدد العمليات المسجّلة.'));
+    }
+
+    function load(force) {
+      if (loading) return; loading = true;
+      rbtn.classList.add('spin');
+      call('getAppDashboard', !!force).then(function (res) {
+        loading = false; rbtn.classList.remove('spin');
+        if (!box.isConnected) return;
+        if (res && res.ok) { lsSet(DASH_LS, JSON.stringify(res)); draw(res, false); return; }
+        if (res && res.code === 'AUTH') return;
+        var msg = (res && res.code === 'API_FN') ? 'النسخة المنشورة من Apps Script قديمة. الصق AppDashboard.gs وApi.gs وانشر نسخة جديدة.' : ((res && res.message) || 'تعذر جلب اللوحة.');
+        if (!cached) { clear(body); body.appendChild(h('div', { class: 'msg err', text: msg })); body.appendChild(h('button', { class: 'btn', style: 'margin-top:12px', type: 'button', onclick: function () { skeleton(); load(true); } }, 'إعادة المحاولة')); }
+        else toast(msg);
+      });
+    }
+    rbtn.addEventListener('click', function () { load(true); });
+    if (cached && cached.ok) { draw(cached, true); } else skeleton();
+    load(false);
+    timer = setInterval(function () {
+      if (!box.isConnected) { clearInterval(timer); return; }
+      if (!document.hidden) load(false);
+    }, 60000);
+  }
+
   // ======================= التوجيه والإقلاع =======================
   function route() {
     if (!apiBase()) return renderSetup(false);
@@ -779,9 +943,11 @@
     var key = parts[0] || 'home';
     if ((key === 'site' || key === 'photos') && !has('site')) key = 'home';
     if (key === 'me' && !has('mypage')) key = 'home';
+    if (key === 'dash' && !has('dashboard')) key = 'home';
     if (key === 'site') return pageSite(parts[1]);
     if (key === 'photos') return pagePhotos();
     if (key === 'me') return pageMe();
+    if (key === 'dash') return pageDash();
     return pageHome();
   }
   window.addEventListener('hashchange', function () { if (S.user) route(); });

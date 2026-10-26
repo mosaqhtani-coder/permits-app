@@ -1,5 +1,5 @@
 // خدمة الكاش: نخزّن هيكل التطبيق فقط. طلبات الخادم (script.google.com) ما تمر من هنا أبداً.
-var CACHE = 'ptw-app-v1.0';
+var CACHE = 'ptw-app-v1.1';
 var SHELL = ['./', 'index.html', 'styles.css', 'app.js', 'config.js', 'manifest.webmanifest'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) {
