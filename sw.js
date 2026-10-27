@@ -1,6 +1,6 @@
 // خدمة الكاش: نخزّن هيكل التطبيق فقط. طلبات الخادم (script.google.com) ما تمر من هنا أبداً.
-var CACHE = 'ptw-app-v1.6';
-var SHELL = ['./', 'index.html', 'styles.css?v=1.6', 'app.js?v=1.6', 'config.js?v=1.6', 'manifest.webmanifest'];
+var CACHE = 'ptw-app-v1.7';
+var SHELL = ['./', 'index.html', 'styles.css?v=1.7', 'app.js?v=1.7', 'config.js?v=1.7', 'manifest.webmanifest'];
 self.addEventListener('install', function (e) { e.waitUntil(caches.open(CACHE).then(function (c) { return c.addAll(SHELL); }).then(function () { return self.skipWaiting(); })); });
 self.addEventListener('activate', function (e) {
   e.waitUntil(caches.keys().then(function (ks) { return Promise.all(ks.filter(function (k) { return k !== CACHE; }).map(function (k) { return caches.delete(k); })); }).then(function () { return self.clients.claim(); }));
