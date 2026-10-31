@@ -1225,67 +1225,94 @@
     search();
   }
   function empDetail(box, empId) {
-    var body = h('div'), cur = { y: 0, m: 0 }; box.appendChild(body);
+    var body = h('div'), cur = { y: 0, m: 0 }, seq = 0; box.appendChild(body);
     function rankChip(rk) {
       if (!rk || !rk.rank) return h('div', { class: 'rkchip none', text: 'بدون ترتيب' });
       var top5 = rk.rank <= 5;
-      return h('div', { class: 'rkchip' + (top5 ? ' top' : '') , text: (top5 ? '★ ضمن أعلى 5 · ' : '') + 'الترتيب ' + rk.rank + ' من ' + rk.of });
+      return h('div', { class: 'rkchip' + (top5 ? ' top' : ''), text: (top5 ? '★ ضمن أعلى 5 · ' : '') + 'الترتيب ' + rk.rank + ' من ' + rk.of });
     }
     function load(y, m) {
+      var my = ++seq;
       clear(body); body.appendChild(spinnerBlock('جاري تحميل التقرير...'));
       call('getEmployeeReport', empId, y || undefined, m || undefined).then(function (r) {
-        if (!body.isConnected) return; clear(body);
+        if (my !== seq || !body.isConnected) return; clear(body);
         if (!r || !r.ok) { if (r && r.code === 'AUTH') return; body.appendChild(h('div', { class: 'msg err', text: (r && r.message) || 'تعذر جلب التقرير.' })); body.appendChild(h('a', { class: 'btn gray', href: '#/emp' }, 'رجوع')); return; }
         cur.y = r.year; cur.m = r.month;
-        var rk = r.ranks || {}, ph = r.photos || { total: 0, open: 0, close: 0, rounds: 0, roundFiles: 0, byType: [], list: [] };
         function step(d) { var m2 = r.month + d, y2 = r.year; if (m2 < 1) { m2 = 12; y2--; } if (m2 > 12) { m2 = 1; y2++; } load(y2, m2); }
         body.appendChild(h('div', { class: 'card' }, h('h2', { text: r.name }), h('div', { class: 'muted' }, ltr(r.empId), ' · ' + (r.role || ''))));
         body.appendChild(h('div', { class: 'months' }, h('button', { class: 'icon-btn', type: 'button', onclick: function () { step(-1); } }, icon('back')), h('div', { class: 'lbl', text: MONTHS_AR[r.month] + ' ' + r.year }), h('button', { class: 'icon-btn', type: 'button', disabled: r.isCurrentMonth, onclick: function () { step(1); } }, icon('next'))));
+        // الترتيب والصور تجي بنداء ثاني (ما نعطّل ظهور التقرير)
+        var slotO = h('div', { class: 'rkslot' }), slotC = h('div', { class: 'rkslot' }), slotP = h('div', { class: 'rkslot' });
+        var nPhotos = h('div', { class: 'n', text: '…' });
         body.appendChild(h('div', { class: 'stats' },
-          h('div', { class: 'stat' }, h('div', { class: 'n', text: r.openedCount }), h('div', { class: 'l', text: 'فتح' }), rankChip(rk.opened)),
-          h('div', { class: 'stat' }, h('div', { class: 'n', text: r.closedCount }), h('div', { class: 'l', text: 'قفل بنفسه' }), rankChip(rk.closed)),
-          h('div', { class: 'stat wide' }, h('div', { class: 'n', text: ph.total }), h('div', { class: 'l', text: 'رفعات صور' }), rankChip(rk.photos))));
+          h('div', { class: 'stat' }, h('div', { class: 'n', text: r.openedCount }), h('div', { class: 'l', text: 'فتح' }), slotO),
+          h('div', { class: 'stat' }, h('div', { class: 'n', text: r.closedCount }), h('div', { class: 'l', text: 'قفل بنفسه' }), slotC),
+          h('div', { class: 'stat wide' }, nPhotos, h('div', { class: 'l', text: 'رفعات صور' }), slotP)));
         if (r.bulkClosedCount) body.appendChild(h('div', { class: 'muted', style: 'margin:-6px 4px 12px;font-size:13px', text: 'من القفل ' + r.bulkClosedCount + ' إغلاق جماعي، وما يدخل بترتيب الإغلاق.' }));
 
-        // رفع الصور بالتفصيل
-        var pc = h('div', { class: 'card' }, h('h2', { text: 'رفع الصور بالقسم' }));
-        if (!ph.total) pc.appendChild(emptyNote('ما رفع صور بهالشهر.'));
-        else {
-          var secs = h('div', { class: 'secs' });
-          [['صور فتح التصاريح', ph.open, rk.photosOpen], ['صور إغلاق التصاريح', ph.close, rk.photosClose], ['صور الجولات', ph.rounds, rk.photosRounds]].forEach(function (s) {
-            secs.appendChild(h('div', { class: 'secrow' }, h('span', { class: 'k', text: s[0] }), h('span', { class: 'v' }, h('b', { text: s[1] }), s[0] === 'صور الجولات' && ph.roundFiles ? ' (' + ph.roundFiles + ' ملف)' : '', s[2] && s[2].rank ? h('span', { class: 'rkmini' + (s[2].rank <= 5 ? ' top' : ''), text: ' #' + s[2].rank }) : null)));
-          });
-          pc.appendChild(secs);
-          if (ph.byType && ph.byType.length) {
-            pc.appendChild(h('div', { class: 'sub2', text: 'الجولات حسب النوع' }));
-            pc.appendChild(h('div', { class: 'chips ro' }, ph.byType.map(function (t) { return h('span', { class: 'chip on', text: t.type + ' · ' + t.n }); })));
-          }
-        }
+        var pc = h('div', { class: 'card' }, h('h2', { text: 'رفع الصور بالقسم' }), spinnerBlock('جاري حساب الصور والترتيب...'));
         body.appendChild(pc);
 
         var mx = 1; r.byDay.forEach(function (d) { mx = Math.max(mx, d.opened, d.closed); });
-        var days = h('div', { class: 'brows' });
+        var days = h('div', { class: 'brows' }), daySlots = {};
         r.byDay.forEach(function (d) {
+          var ps = h('span', { class: 'dph' });
+          daySlots[d.date] = ps;
           days.appendChild(h('div', { class: 'brow' },
-            h('div', { class: 'bl' }, h('a', { class: 'bn dlink', href: '#/dash/' + d.date, title: 'عرض لوحة هذا اليوم' }, ltr(d.date.substring(5))), h('span', { class: 'bv', text: 'فتح ' + d.opened + ' · قفل ' + d.closed + (d.photos ? ' · صور ' + d.photos : '') })),
+            h('div', { class: 'bl' }, h('a', { class: 'bn dlink', href: '#/dash/' + d.date, title: 'عرض لوحة هذا اليوم' }, ltr(d.date.substring(5))), h('span', { class: 'bv' }, 'فتح ' + d.opened + ' · قفل ' + d.closed, ps)),
             h('div', { class: 'bt' }, h('i', { class: 'po', style: 'width:' + (d.opened / mx * 50) + '%' }), h('i', { class: 'pc', style: 'width:' + (d.closed / mx * 50) + '%' }))));
         });
-        body.appendChild(h('div', { class: 'card' }, h('h2', { text: 'توزيع الأيام' }), h('div', { class: 'muted', style: 'margin:-4px 0 10px;font-size:13px', text: 'اضغط على التاريخ تشوف لوحة ذاك اليوم.' }), r.byDay.length ? days : emptyNote('ما فيه عمليات بهالشهر.')));
+        var daysCard = h('div', { class: 'card' }, h('h2', { text: 'توزيع الأيام' }), h('div', { class: 'muted', style: 'margin:-4px 0 10px;font-size:13px', text: 'اضغط على التاريخ تشوف لوحة ذاك اليوم.' }), r.byDay.length ? days : emptyNote('ما فيه عمليات بهالشهر.'));
+        body.appendChild(daysCard);
         [['التصاريح اللي فتحها', r.openedList], ['التصاريح اللي قفلها', r.closedList]].forEach(function (s) {
           if (!s[1].length) return;
           var det = h('details', { class: 'card fold' }, h('summary', { text: s[0] + ' (' + s[1].length + ')' }));
           s[1].forEach(function (x) { det.appendChild(h('div', { class: 'rowitem' }, h('b', null, ltr(x.ptw)), ' · ' + (x.company || '') + (x.location ? ' · ' + x.location : ''), x.bulk ? h('span', { class: 'tag', text: 'جماعي' }) : null, h('div', { class: 'muted' }, ltr(x.time)))); });
           body.appendChild(det);
         });
-        if (ph.list && ph.list.length) {
-          var pdet = h('details', { class: 'card fold' }, h('summary', { text: 'الصور اللي رفعها (' + ph.total + (ph.list.length < ph.total ? '، آخر ' + ph.list.length : '') + ')' }));
-          ph.list.forEach(function (x) {
-            pdet.appendChild(h('div', { class: 'rowitem' }, h('span', { class: 'tag', text: x.section }), ' ', x.section === 'جولة' ? (x.label || '') + (x.files ? ' (' + x.files + ' ملف)' : '') : h('b', null, ltr(x.label || '')),
-              h('div', { class: 'muted' }, ltr(x.time)), safeUrl(x.url) ? openLink(x.url, 'فتح') : null));
-          });
-          body.appendChild(pdet);
-        }
+        var listHost = h('div'); body.appendChild(listHost);
         body.appendChild(h('a', { class: 'btn gray', href: '#/emp' }, 'موظف ثاني'));
+
+        call('getEmployeeReportExtras', empId, r.year, r.month).then(function (x) {
+          if (my !== seq || !body.isConnected) return;
+          clear(pc); pc.appendChild(h('h2', { text: 'رفع الصور بالقسم' }));
+          if (!x || !x.ok) {
+            if (x && x.code === 'AUTH') return;
+            nPhotos.textContent = '-';
+            var msg = (x && x.code === 'API_FN') ? 'النسخة المنشورة من Apps Script قديمة. الصق EmployeeReport.gs وApi.gs وانشر نسخة جديدة.' : ((x && x.message) || 'تعذر جلب الصور والترتيب.');
+            pc.appendChild(h('div', { class: 'msg err', text: msg }));
+            pc.appendChild(h('button', { class: 'btn ghost sm', type: 'button', style: 'margin-top:10px', onclick: function () { load(r.year, r.month); } }, 'إعادة المحاولة'));
+            return;
+          }
+          var rk = x.ranks || {}, ph = x.photos;
+          nPhotos.textContent = ph.total;
+          slotO.appendChild(rankChip(rk.opened)); slotC.appendChild(rankChip(rk.closed)); slotP.appendChild(rankChip(rk.photos));
+          if (!ph.total) pc.appendChild(emptyNote('ما رفع صور بهالشهر.'));
+          else {
+            var secs = h('div', { class: 'secs' });
+            [['صور فتح التصاريح', ph.open, rk.photosOpen], ['صور إغلاق التصاريح', ph.close, rk.photosClose], ['صور الجولات', ph.rounds, rk.photosRounds]].forEach(function (s) {
+              secs.appendChild(h('div', { class: 'secrow' }, h('span', { class: 'k', text: s[0] }), h('span', { class: 'v' }, h('b', { text: s[1] }), s[0] === 'صور الجولات' && ph.roundFiles ? ' (' + ph.roundFiles + ' ملف)' : '', s[2] && s[2].rank ? h('span', { class: 'rkmini' + (s[2].rank <= 5 ? ' top' : ''), text: ' #' + s[2].rank }) : null)));
+            });
+            pc.appendChild(secs);
+            if (ph.byType && ph.byType.length) {
+              pc.appendChild(h('div', { class: 'sub2', text: 'الجولات حسب النوع' }));
+              pc.appendChild(h('div', { class: 'chips ro' }, ph.byType.map(function (t) { return h('span', { class: 'chip on', text: t.type + ' · ' + t.n }); })));
+            }
+          }
+          var pbd = x.photoByDay || {};
+          Object.keys(pbd).forEach(function (d) {
+            if (daySlots[d]) daySlots[d].textContent = ' · صور ' + pbd[d];
+            else if (r.byDay.length) { /* يوم فيه صور بس بدون عمليات: نضيفه */ }
+          });
+          if (ph.list && ph.list.length) {
+            var pdet = h('details', { class: 'card fold' }, h('summary', { text: 'الصور اللي رفعها (' + ph.total + (ph.list.length < ph.total ? '، آخر ' + ph.list.length : '') + ')' }));
+            ph.list.forEach(function (it) {
+              pdet.appendChild(h('div', { class: 'rowitem' }, h('span', { class: 'tag', text: it.section }), ' ', it.section === 'جولة' ? (it.label || '') + (it.files ? ' (' + it.files + ' ملف)' : '') : h('b', null, ltr(it.label || '')),
+                h('div', { class: 'muted' }, ltr(it.time)), safeUrl(it.url) ? openLink(it.url, 'فتح') : null));
+            });
+            listHost.appendChild(pdet);
+          }
+        });
       });
     }
     load(0, 0);
