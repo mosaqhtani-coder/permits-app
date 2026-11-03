@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.8';
+  var APP_VERSION = '1.9';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -251,6 +251,11 @@
     else if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !window.navigator.standalone) {
       items.push({ node: h('div', { class: 'msg info' }, 'لتثبيت التطبيق على الآيفون: زر المشاركة ثم "إضافة إلى الشاشة الرئيسية".') });
     }
+    var isLight = document.documentElement.getAttribute('data-theme') === 'light';
+    items.push({ label: isLight ? 'التصميم: التبديل للوضع الفاخر الداكن' : 'التصميم: التبديل للوضع الفاتح', run: function () {
+      var nt = isLight ? 'lux' : 'light'; lsSet('ptw_theme', nt); document.documentElement.setAttribute('data-theme', nt);
+      var m = document.querySelector('meta[name=theme-color]'); if (m) m.setAttribute('content', nt === 'light' ? '#0B2E1E' : '#0A0C0B');
+    } });
     items.push({ label: 'تغيير رابط الخادم', run: function () { renderSetup(true); } });
     items.push({ label: 'تسجيل الخروج', danger: true, run: function () { sessionLost(''); } });
     items.push({ node: h('div', { class: 'muted', style: 'padding-top:10px' }, 'تطبيق تصاريح العمل - نسخة ' + APP_VERSION + (S.user ? ' - ' + S.user.name : '')) });
