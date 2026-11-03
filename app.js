@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.7';
+  var APP_VERSION = '1.8';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -112,8 +112,35 @@
     });
   }
 
+  // كاش القراءة (stale-while-revalidate): نعرض آخر نتيجة محفوظة فورًا ونحدّثها من الخادم بالخلفية.
+  // مربوط بالجلسة (آخر 12 حرف من التوكن) ويُمسح عند الخروج. للصفحات القرائية فقط، مو للعمليات.
+  var RC_P = 'ptw_rc:';
+  function rcTok() { return String(S.token || '').slice(-12); }
+  function rcGet(k) {
+    try { var o = JSON.parse(lsGet(k) || 'null'); return (o && o.res && o.u === rcTok()) ? o : null; } catch (e) { return null; }
+  }
+  function rcSet(k, res) {
+    var txt = ''; try { txt = JSON.stringify({ u: rcTok(), t: Date.now(), res: res }); } catch (e) { return; }
+    if (txt.length > 250000) return; // ما نثقّل التخزين
+    lsSet(k, txt);
+  }
+  function rcPurge() {
+    try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf(RC_P) === 0) localStorage.removeItem(k); }); } catch (e) {}
+  }
+  /** cb(res, fromCache). لو فيه نسخة محفوظة تنادي cb فورًا بها ثم تنادي cb بالنتيجة الحديثة. maxAgeMs: لو النسخة أحدث من هذا ما نعيد الجلب. */
+  function swr(fn, args, cb, maxAgeMs) {
+    var k = RC_P + fn + ':' + JSON.stringify(args || []);
+    var c = rcGet(k);
+    if (c) { cb(c.res, true); if (maxAgeMs && Date.now() - c.t < maxAgeMs) return Promise.resolve(c.res); }
+    return call.apply(null, [fn].concat(args || [])).then(function (res) {
+      if (res && res.ok) rcSet(k, res);
+      cb(res, false);
+      return res;
+    });
+  }
+
   function sessionLost(msg) {
-    S.token = ''; S.user = null; lsDel('ptw_token'); lsDel('ptw_user');
+    S.token = ''; S.user = null; lsDel('ptw_token'); lsDel('ptw_user'); rcPurge();
     renderAuth(msg || '');
   }
 
@@ -392,10 +419,10 @@
 
     if (has('mypage')) {
       statsBox.textContent = 'جاري التحميل...';
-      call('getMyPageStats').then(function (res) {
+      swr('getMyPageStats', [], function (res, fromCache) {
         if (!statsBox.isConnected) return;
+        if (!res || !res.ok) { if (!fromCache && !statsBox.querySelector('.stats')) statsBox.textContent = ''; return; }
         clear(statsBox);
-        if (!res || !res.ok) { statsBox.textContent = ''; return; }
         statsBox.className = '';
         statsBox.appendChild(h('div', { class: 'stats', style: 'margin:0' },
           h('div', { class: 'stat' }, h('div', { class: 'n', text: res.permits.opened }), h('div', { class: 'l', text: 'تصاريح فتحتها' })),
@@ -707,8 +734,11 @@
       label.textContent = MONTHS[st.m] + ' ' + st.y;
       next.disabled = (st.y === curY && st.m === curM);
       clear(body); body.appendChild(spinnerBlock('جاري تحميل بياناتك...'));
-      call('getMyPageStats', { year: st.y, month: st.m }).then(function (res) {
-        if (!body.isConnected) return;
+      var shown = false, ky = st.y + '-' + st.m;
+      swr('getMyPageStats', [{ year: st.y, month: st.m }], function (res, fromCache) {
+        if (!body.isConnected || ky !== st.y + '-' + st.m) return;
+        if (res && res.ok) { shown = true; st.data = res; return render(); }
+        if (shown) return; // عندنا نسخة محفوظة معروضة، ما نبدّلها بخطأ شبكة
         clear(body);
         if (!res || !res.ok) {
           if (res && res.code === 'AUTH') return;
@@ -1147,8 +1177,11 @@
   }
   function meetingsLog(body) {
     body.appendChild(spinnerBlock('جاري جلب السجل...'));
-    call('getRecentMeetings', { limit: 60 }).then(function (res) {
-      if (!body.isConnected) return; clear(body);
+    var shownM = false;
+    swr('getRecentMeetings', [{ limit: 60 }], function (res) {
+      if (!body.isConnected) return;
+      if (res && res.ok) shownM = true; else if (shownM) return;
+      clear(body);
       if (!res || !res.ok) { if (res && res.code === 'AUTH') return; return body.appendChild(h('div', { class: 'msg err', text: (res && res.message) || 'تعذر جلب السجل.' })); }
       if (!res.meetings.length) return body.appendChild(emptyNote('ما فيه اجتماعات مسجلة لين الحين.'));
       res.meetings.forEach(function (m) {
@@ -1399,12 +1432,23 @@
     if (!apiBase()) return renderSetup(false);
     S.token = lsGet('ptw_token');
     if (!S.token) return renderAuth('');
-    clear(root); root.appendChild(spinnerBlock('جاري التحميل...'));
+    // فتح فوري: لو عندنا بيانات المستخدم المحفوظة نعرض التطبيق مباشرة ونتحقق من الجلسة بالخلفية
+    // (كل نداء محمي يتحقق من التوكن بالخادم على أي حال، فهذا ما يفتح ثغرة).
+    var cachedU = null; try { cachedU = JSON.parse(lsGet('ptw_user') || 'null'); } catch (e) {}
+    var optimistic = !!(cachedU && cachedU.perms && cachedU.perms.length);
+    if (optimistic) { S.user = cachedU; route(); }
+    else { clear(root); root.appendChild(spinnerBlock('جاري التحميل...')); }
     rpc('whoami', [S.token]).then(function (res) {
-      if (res && res.ok && res.user) { S.user = res.user; lsSet('ptw_user', JSON.stringify(res.user)); return route(); }
+      if (res && res.ok && res.user) {
+        var changed = optimistic && JSON.stringify(cachedU.perms) !== JSON.stringify(res.user.perms);
+        S.user = res.user; lsSet('ptw_user', JSON.stringify(res.user));
+        if (!optimistic || changed) return route();   // صلاحياته تغيّرت: نعيد رسم الصفحة الحالية
+        return;
+      }
       if (res && (res.code === 'AUTH' || res.code === 'FORBIDDEN')) return sessionLost(res.code === 'AUTH' ? '' : '');
       // خطأ شبكة أو خادم: لو عندنا بيانات المستخدم المحفوظة نكمل (وضع بدون اتصال جزئي)
-      var cached = null; try { cached = JSON.parse(lsGet('ptw_user') || 'null'); } catch (e) {}
+      if (optimistic) return; // الواجهة مفتوحة أصلًا من الكاش
+      var cached = cachedU;
       if (cached && cached.perms) { S.user = cached; return route(); }
       clear(root);
       root.appendChild(h('div', { class: 'auth-wrap' }, h('div', { class: 'card center' },
