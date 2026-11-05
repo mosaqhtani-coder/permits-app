@@ -470,3 +470,8 @@ html[data-theme="lux"] .erow a.en, html[data-theme="lux"] .erow a.tn { color: va
   .dbody .etab .erow, .dbody .trow { padding-top: 4px; padding-bottom: 4px; }
   body { font-size: 13px; }
 }
+
+/* v1.14: اختيار الفترة (يوم/أسبوع/شهر) */
+.pseg { margin: 0 0 10px; }
+.pseg button { min-height: 44px; font-size: 16px; }
+@media print { .pseg { display: none !important; } }

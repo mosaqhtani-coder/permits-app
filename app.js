@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.13';
+  var APP_VERSION = '1.14';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -891,7 +891,7 @@
 
   /** قائمة ترتيب موظفين (أعلى N): الرتبة + الاسم (رابط لتقرير الموظف للمدير) + العدد + شريط */
   function topList(items, unit, cls) {
-    if (!items || !items.length) return h('div', { class: 'muted', style: 'text-align:center;padding:8px', text: 'ما فيه بيانات بهذا اليوم.' });
+    if (!items || !items.length) return h('div', { class: 'muted', style: 'text-align:center;padding:8px', text: 'ما فيه بيانات بهذا ' + dashWord + '.' });
     var mx = items[0].n || 1, adm = has('admin');
     return h('div', { class: 'toplist' }, items.map(function (e, i) {
       var nm = e.name || e.id || '-';
@@ -917,7 +917,7 @@
   }
   function photosCard(P) {
     var card = h('section', { class: 'card' }, h('h2', { text: 'رفع الصور' }));
-    if (!P || !P.uploads) { card.appendChild(emptyNote('ما فيه رفع صور بهذا اليوم.')); return card; }
+    if (!P || !P.uploads) { card.appendChild(emptyNote('ما فيه رفع صور بهذا ' + dashWord + '.')); return card; }
     var R = P.sections.rounds;
     card.appendChild(h('div', { class: 'phead' }, h('b', { text: P.uploads }), ' رفعة', R.files ? h('span', { class: 'muted', text: ' · ' + R.files + ' ملف جولات' }) : null));
     if (P.byEmp && P.byEmp.length) {
@@ -986,18 +986,41 @@
     return out;
   }
 
+  var dashWord = 'اليوم';  // كلمة الفترة بالنصوص (اليوم/الأسبوع/الشهر)
+  var WEEK_START = 0;     // نفس APPDASH_WEEK_START_ بالخادم: 0=الأحد
   var DAY_MEM = {};   // كاش جلسة لأيام سابقة (التنقل ذهاب وإياب يصير فوري)
 
-  function pageDash(dateArg) {
-    var date = isDateStr(dateArg) ? dateArg : '';
+  function weekStartC(ds) { var p = ds.split('-'), dow = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12).getDay(); return shiftDay(ds, -((dow - WEEK_START + 7) % 7)); }
+  function monthStartC(ds) { return ds.substring(0, 8) + '01'; }
+  function monthShiftC(ds, n) { var p = ds.split('-'), d = new Date(Number(p[0]), Number(p[1]) - 1 + n, 1, 12); function z(x) { return (x < 10 ? '0' : '') + x; } return d.getFullYear() + '-' + z(d.getMonth() + 1) + '-01'; }
+  function periodStartC(per, ds) { return per === 'week' ? weekStartC(ds) : monthStartC(ds); }
+  function periodNextC(per, ds) { return per === 'week' ? shiftDay(weekStartC(ds), 7) : monthShiftC(ds, 1); }
+  function periodPrevC(per, ds) { return per === 'week' ? shiftDay(weekStartC(ds), -7) : monthShiftC(ds, -1); }
+  var PERIOD_AR = { day: 'يوم', week: 'أسبوع', month: 'شهر' };
+
+  function pageDash(arg1, arg2) {
+    var period = (arg1 === 'week' || arg1 === 'month') ? arg1 : 'day';
+    var date = period === 'day' ? (isDateStr(arg1) ? arg1 : '') : (isDateStr(arg2) ? arg2 : '');
+    var memKey = period === 'day' ? date : period + '|' + (date || 'cur');
     var box = h('div');
     shell('dash', 'لوحة اليوم', box);
     var timer = null, loading = false, serverToday = localToday();
     var cached = null;
-    if (!date) { try { cached = JSON.parse(lsGet(DASH_LS) || 'null'); } catch (e) {} }
-    else if (DAY_MEM[date]) cached = DAY_MEM[date].res;
+    if (period === 'day' && !date) { try { cached = JSON.parse(lsGet(DASH_LS) || 'null'); } catch (e) {} }
+    else if (DAY_MEM[memKey]) cached = DAY_MEM[memKey].res;
 
-    function go(ds) { location.hash = (ds && ds !== serverToday) ? '#/dash/' + ds : '#/dash'; }
+    function go(ds) {
+      if (period === 'day') { location.hash = (ds && ds !== serverToday) ? '#/dash/' + ds : '#/dash'; return; }
+      location.hash = (!ds || periodStartC(period, ds) === periodStartC(period, serverToday)) ? '#/dash/' + period : '#/dash/' + period + '/' + ds;
+    }
+    function switchPeriod(p) {
+      var an = date || serverToday;
+      if (p === 'day') location.hash = (date && date !== serverToday) ? '#/dash/' + date : '#/dash';
+      else location.hash = (periodStartC(p, an) === periodStartC(p, serverToday)) ? '#/dash/' + p : '#/dash/' + p + '/' + an;
+    }
+    box.appendChild(h('div', { class: 'seg pseg' }, ['day', 'week', 'month'].map(function (p) {
+      return h('button', { type: 'button', class: p === period ? 'on' : '', onclick: function () { if (p !== period) switchPeriod(p); } }, PERIOD_AR[p]);
+    })));
     var body = h('div', { class: 'dbody' });
     var stamp = h('span', { class: 'muted', text: '' });
     var rbtn = h('button', { class: 'icon-btn rfs', type: 'button', 'aria-label': 'تحديث' }, h('span', { text: '↻' }));
@@ -1006,12 +1029,13 @@
     // شريط التنقل بين الأيام
     var shown = date || serverToday;
     var dateIn = h('input', { class: 'input datein', type: 'date', value: shown, max: serverToday, 'aria-label': 'اختر اليوم' });
-    var dname = h('div', { class: 'dname', text: (date ? dayName(date) : 'اليوم') });
-    var prevB = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'اليوم السابق' }, icon('back'));
-    var nextB = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'اليوم التالي', disabled: !date }, icon('next'));
-    var todayB = h('button', { class: 'pill sm', type: 'button', hidden: !date }, 'اليوم');
-    prevB.addEventListener('click', function () { go(shiftDay(date || serverToday, -1)); });
-    nextB.addEventListener('click', function () { go(shiftDay(date || serverToday, 1)); });
+    var dname = h('div', { class: 'dname', text: period === 'day' ? (date ? dayName(date) : 'اليوم') : (period === 'week' ? 'الأسبوع' : 'الشهر') });
+    var prevB = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'السابق' }, icon('back'));
+    function nextOff() { return period === 'day' ? (!date || date >= serverToday) : (periodNextC(period, date || serverToday) > serverToday); }
+    var nextB = h('button', { class: 'icon-btn', type: 'button', 'aria-label': 'التالي', disabled: nextOff() }, icon('next'));
+    var todayB = h('button', { class: 'pill sm', type: 'button', hidden: !date }, period === 'day' ? 'اليوم' : 'الحالي');
+    prevB.addEventListener('click', function () { go(period === 'day' ? shiftDay(date || serverToday, -1) : periodPrevC(period, date || serverToday)); });
+    nextB.addEventListener('click', function () { go(period === 'day' ? shiftDay(date || serverToday, 1) : periodNextC(period, date || serverToday)); });
     todayB.addEventListener('click', function () { go(''); });
     dateIn.addEventListener('change', function () { if (isDateStr(dateIn.value)) go(dateIn.value > serverToday ? serverToday : dateIn.value); });
     box.appendChild(h('div', { class: 'datebar' }, prevB, h('div', { class: 'dmid' }, dateIn, dname), nextB, todayB));
@@ -1022,7 +1046,7 @@
     function setPH(d) {
       var ds = d.mode === 'day' ? d.date : (d.date || (d.today && d.today.date)) || '';
       var n = new Date(), z = function (x) { return (x < 10 ? '0' : '') + x; };
-      phT.textContent = 'لوحة تصاريح العمل - ' + (d.mode === 'day' ? dayName(ds) + ' ' : 'اليوم ') + ds;
+      phT.textContent = d.mode === 'range' ? ('لوحة تصاريح العمل - ' + (d.period === 'month' ? 'الشهر ' : 'الأسبوع ') + rangeLabel(d) + ' (' + d.from + ' إلى ' + d.to + ')') : ('لوحة تصاريح العمل - ' + (d.mode === 'day' ? dayName(ds) + ' ' : 'اليوم ') + ds);
       phS.textContent = 'طُبعت: ' + n.getFullYear() + '-' + z(n.getMonth() + 1) + '-' + z(n.getDate()) + ' ' + z(n.getHours()) + ':' + z(n.getMinutes()) + (S.user ? ' - ' + S.user.name : '');
     }
     var opened = [];
@@ -1045,14 +1069,15 @@
       for (var i = 0; i < 3; i++) body.appendChild(h('div', { class: 'card sk' }, h('div', { class: 'skl w60' }), h('div', { class: 'skl w90' }), h('div', { class: 'skl w40' })));
     }
     function syncBar(d) {
-      var st = d.mode === 'day' ? d.today : (d.date || (d.today && d.today.date));
+      var st = (d.mode === 'day' || d.mode === 'range') ? d.today : (d.date || (d.today && d.today.date));
       if (isDateStr(st)) { serverToday = st; dateIn.max = serverToday; }
-      nextB.disabled = !date || date >= serverToday;
+      nextB.disabled = nextOff();
       if (!date) dateIn.value = serverToday;
+      if (d.mode === 'range') dname.textContent = rangeLabel(d);
     }
 
     function drawToday(d, fromCache) {
-      clear(body);
+      clear(body); dashWord = 'اليوم';
       var T = d.today, Y = d.yesterday, N = d.now || {};
       var cur = parseInt((d.generatedAt || '').substring(11, 13), 10);
       stamp.textContent = (fromCache ? 'آخر نسخة محفوظة · ' : 'تحدّثت ') + (d.generatedAt || '').substring(11, 16);
@@ -1078,8 +1103,46 @@
       body.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:6px 0 2px' }, 'نفس أرقام لوحة الموقع. العدّ بعدد العمليات المسجّلة.'));
     }
 
-    function drawDay(d, fromCache) {
+    function rangeLabel(d) {
+      if (d.period === 'month') { var p = d.from.split('-'); return MONTHS[Number(p[1])] + ' ' + p[0]; }
+      return 'من ' + dayName(d.from) + ' ' + d.from.substring(5) + ' إلى ' + dayName(d.to) + ' ' + d.to.substring(5);
+    }
+    function drawRange(d, fromCache) {
       clear(body);
+      var S = d.range, word = d.period === 'month' ? 'الشهر' : 'الأسبوع';
+      dashWord = word;
+      stamp.textContent = (fromCache ? 'نسخة محفوظة · ' : 'تحدّثت ') + (d.generatedAt || '').substring(11, 16);
+      var nOpen = h('div', { class: 'big', text: '0' }), nClosed = h('div', { class: 'big', text: '0' }), nAuto = h('div', { class: 'big', text: '0' });
+      body.appendChild(h('section', { class: 'hero' },
+        h('div', { class: 'hero-top' }, h('b', { text: word }), h('span', null, ltr(d.from.substring(5) + ' ← ' + d.to.substring(5)), d.partial ? ' · حتى اليوم' : '')),
+        h('div', { class: 'trio' },
+          h('div', { class: 'kp o' }, nOpen, h('div', { class: 'kl', text: 'انفتحت' })),
+          h('div', { class: 'kp c' }, nClosed, h('div', { class: 'kl', text: 'انقفلت' })),
+          h('div', { class: 'kp n' }, nAuto, h('div', { class: 'kl', text: 'انقفلت تلقائي' }))),
+        h('div', { class: 'hero-foot' }, S.opened || S.closed ? ('مجموع ' + S.days + ' يوم، كل يوم محسوب بيومه' + (S.flagged ? ' · ' + S.flagged + ' بتنبيه' : '')) : 'ما فيه عمليات مسجّلة بهذه الفترة')));
+      countUp(nOpen, S.opened); countUp(nClosed, S.closed); countUp(nAuto, S.stillOpen);
+      if (S.opened) {
+        body.appendChild(h('section', { class: 'card ycard' }, h('div', { class: 'ytitle' }, h('h2', { text: 'قفل التصاريح (' + word + ' كامل)' })),
+          h('div', { class: 'yrow' }, ring(S.closedOfOpened, S.opened),
+            h('div', { class: 'ytext' },
+              h('div', { class: 'ybig' }, h('b', { text: S.opened }), ' انفتحت'),
+              h('div', { class: 'ybig ok' }, h('b', { text: S.closedOfOpened }), ' قفلها موظف'),
+              h('div', { class: 'ybig ' + (S.stillOpen ? 'bad' : 'ok') }, h('b', { text: S.stillOpen }), ' انقفلت تلقائي (ما قفلها موظف)')))));
+      }
+      if (S.byDay && S.byDay.length > 1) {
+        var mx = 1; S.byDay.forEach(function (x) { mx = Math.max(mx, x.o + x.c); });
+        body.appendChild(h('section', { class: 'card' }, h('h2', { text: 'يوم بيوم' }),
+          barRows(S.byDay.map(function (x) {
+            return { name: dayName(x.date) + ' ' + x.date.substring(5), value: x.o + ' فتح · ' + x.c + ' إغلاق' + (x.auto ? ' · ' + x.auto + ' تلقائي' : ''), parts: [{ cls: 'po', n: x.o }, { cls: 'pc', n: x.c }] };
+          }), mx)));
+      }
+      chartsCards(S, -1, word).forEach(function (c) { body.appendChild(c); });
+      topsCards(S).forEach(function (c) { body.appendChild(c); });
+      body.appendChild(photosCard(S.photos));
+    }
+
+    function drawDay(d, fromCache) {
+      clear(body); dashWord = 'اليوم';
       var S = d.day;
       stamp.textContent = (fromCache ? 'نسخة محفوظة · ' : 'تحدّثت ') + (d.generatedAt || '').substring(11, 16);
       var nOpen = h('div', { class: 'big', text: '0' }), nClosed = h('div', { class: 'big', text: '0' }), nAuto = h('div', { class: 'big', text: '0' });
@@ -1099,17 +1162,17 @@
 
     function draw(d, fromCache) {
       syncBar(d); setPH(d);
-      if (d.mode === 'day') drawDay(d, fromCache); else drawToday(d, fromCache);
+      if (d.mode === 'range') drawRange(d, fromCache); else if (d.mode === 'day') drawDay(d, fromCache); else drawToday(d, fromCache);
     }
 
     function load(force) {
       if (loading) return; loading = true;
       rbtn.classList.add('spin');
-      call('getAppDashboard', !!force, date).then(function (res) {
+      call('getAppDashboard', !!force, date, period).then(function (res) {
         loading = false; rbtn.classList.remove('spin');
         if (!box.isConnected) return;
         if (res && res.ok) {
-          if (date) DAY_MEM[date] = { res: res, at: Date.now() }; else lsSet(DASH_LS, JSON.stringify(res));
+          if (period !== 'day' || date) DAY_MEM[memKey] = { res: res, at: Date.now() }; else lsSet(DASH_LS, JSON.stringify(res));
           draw(res, false); return;
         }
         if (res && res.code === 'AUTH') return;
@@ -1119,10 +1182,11 @@
       });
     }
     rbtn.addEventListener('click', function () { load(true); });
-    if (cached && cached.ok && ((date && cached.mode === 'day') || (!date && cached.mode !== 'day'))) {
+    var modeOk = cached && cached.ok && (period !== 'day' ? cached.mode === 'range' : ((date && cached.mode === 'day') || (!date && cached.mode !== 'day' && cached.mode !== 'range')));
+    if (modeOk) {
       draw(cached, true);
-      // يوم سابق محفوظ بالجلسة وعمره أقل من دقيقتين: ما نعيد الجلب
-      if (date && DAY_MEM[date] && Date.now() - DAY_MEM[date].at < 120000) { /* نكتفي بالمحفوظ */ } else load(false);
+      // فترة/يوم سابق محفوظ بالجلسة وعمره أقل من دقيقتين: ما نعيد الجلب
+      if ((date || period !== 'day') && DAY_MEM[memKey] && Date.now() - DAY_MEM[memKey].at < 120000) { /* نكتفي بالمحفوظ */ } else load(false);
     } else { skeleton(); load(false); }
     if (!date) {
       timer = setInterval(function () {
@@ -1466,7 +1530,7 @@
     if (key === 'site') return pageSite(parts[1]);
     if (key === 'photos') return pagePhotos();
     if (key === 'me') return pageMe();
-    if (key === 'dash') return pageDash(parts[1]);
+    if (key === 'dash') return pageDash(parts[1], parts[2]);
     return pageHome();
   }
   window.addEventListener('hashchange', function () { if (S.user) route(); });
