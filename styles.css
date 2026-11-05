@@ -475,3 +475,18 @@ html[data-theme="lux"] .erow a.en, html[data-theme="lux"] .erow a.tn { color: va
 .pseg { margin: 0 0 10px; }
 .pseg button { min-height: 44px; font-size: 16px; }
 @media print { .pseg { display: none !important; } }
+
+/* ===== v2.58: خريطة الازدحام (دور × زون) ===== */
+.hotline { display: flex; flex-direction: column; gap: 4px; font-size: 14px; margin-bottom: 10px; }
+.hwrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.hgrid { display: grid; grid-template-columns: 70px repeat(5, minmax(0, 1fr)) minmax(0, 1.1fr); gap: 3px; }
+.hgrid.nz { grid-template-columns: 70px repeat(5, minmax(0, 1fr)) minmax(0, 1fr) minmax(0, 1.1fr); }
+.hgrid .hh { font-size: 10.5px; white-space: nowrap; font-weight: 700; color: var(--muted); text-align: center; padding: 3px 0; }
+.hgrid .hl { font-size: 11px; line-height: 1.25; font-weight: 700; display: flex; align-items: center; padding-inline-end: 4px; }
+.hgrid .hc { border-radius: 7px; min-height: 38px; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 14px; font-variant-numeric: tabular-nums; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+.hgrid .hc.z { background: var(--primary-50); }
+.hgrid .ht { display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 13px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.hgrid .hb { border-top: 1px solid var(--border); padding-top: 4px; }
+.hextra .chips2 { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.hextra .chip2 { background: var(--primary-50); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+@media print { .heatcard { break-inside: avoid; } .hwrap { overflow: visible; } }

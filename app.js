@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.14';
+  var APP_VERSION = '1.15';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -986,8 +986,71 @@
     return out;
   }
 
+  // v2.58: خريطة الازدحام (دور × زون) — نفس فكرة خريطة الموقع، من فتحات الفترة المختارة
+  function heatCard(H, word) {
+    var card = h('section', { class: 'card heatcard' }, h('h2', { text: 'خريطة الازدحام — الأدوار × الزونات' }));
+    if (!H || !H.rows || (!H.rows.length && !H.facades.length && !H.places.length && !H.none)) {
+      card.appendChild(emptyNote('ما فيه فتحات مصنّفة بدور وزون بهذا ' + dashWord + '.'));
+      return card;
+    }
+    var cols = [1, 2, 3, 4, 5], hasNz = H.nz > 0, mx = Math.max(H.max || 0, 1);
+    // أبرز المواضع
+    var cells = [];
+    H.rows.forEach(function (r) {
+      r.z.forEach(function (n, i) { if (n) cells.push({ n: n, t: r.lv + ' · زون ' + (i + 1) }); });
+      if (r.nz) cells.push({ n: r.nz, t: r.lv + ' · بدون زون' });
+    });
+    cells.sort(function (a, b) { return b.n - a.n; });
+    var lvBest = H.rows.slice().sort(function (a, b) { return b.t - a.t; })[0];
+    var zBest = -1; H.zones.forEach(function (n, i) { if (n && (zBest < 0 || n > H.zones[zBest])) zBest = i; });
+    var hot = h('div', { class: 'hotline' });
+    if (lvBest && lvBest.t) hot.appendChild(h('div', null, 'أكثر دور ضغط: ', h('b', { text: lvBest.lv }), ' (' + lvBest.t + ')'));
+    if (zBest > -1) hot.appendChild(h('div', null, 'أكثر زون ضغط: ', h('b', { text: 'زون ' + (zBest + 1) }), ' (' + H.zones[zBest] + ')'));
+    if (cells.length) hot.appendChild(h('div', null, 'أعلى نقطة: ', h('b', { text: cells[0].t }), ' (' + cells[0].n + ' تصريح)'));
+    card.appendChild(hot);
+
+    function cell(n, tot) {
+      var a = n ? (0.12 + 0.78 * n / mx) : 0;
+      var st = n ? 'background:rgba(226,92,48,' + a.toFixed(2) + ');' + (a > 0.5 ? 'color:#fff' : '') : '';
+      return h('span', { class: 'hc' + (n ? '' : ' z'), style: st, text: n || '' });
+    }
+    var cls = 'hgrid' + (hasNz ? ' nz' : '');
+    var grid = h('div', { class: cls });
+    grid.appendChild(h('span', { class: 'hh hl' }));
+    cols.forEach(function (z) { grid.appendChild(h('span', { class: 'hh', text: 'ز' + z })); });
+    if (hasNz) grid.appendChild(h('span', { class: 'hh', text: 'بلا زون' }));
+    grid.appendChild(h('span', { class: 'hh', text: 'مجموع' }));
+    H.rows.forEach(function (r) {
+      grid.appendChild(h('span', { class: 'hl', text: r.lv }));
+      r.z.forEach(function (n) { grid.appendChild(cell(n)); });
+      if (hasNz) grid.appendChild(cell(r.nz));
+      grid.appendChild(h('span', { class: 'ht', text: r.t }));
+    });
+    grid.appendChild(h('span', { class: 'hl hb', text: 'المجموع' }));
+    H.zones.forEach(function (n) { grid.appendChild(h('span', { class: 'ht hb', text: n })); });
+    if (hasNz) grid.appendChild(h('span', { class: 'ht hb', text: H.nz }));
+    var all = 0; H.zones.forEach(function (n) { all += n; }); all += H.nz;
+    grid.appendChild(h('span', { class: 'ht hb', text: all }));
+    if (H.rows.length) card.appendChild(h('div', { class: 'hwrap' }, grid));
+
+    var extra = h('div', { class: 'hextra' });
+    function chips(title, list) {
+      if (!list || !list.length) return;
+      extra.appendChild(h('div', { class: 'sub2', text: title }));
+      var box = h('div', { class: 'chips2' });
+      list.forEach(function (x) { box.appendChild(h('span', { class: 'chip2' }, x.name + ' ', h('b', { text: x.n }))); });
+      extra.appendChild(box);
+    }
+    chips('الواجهات', H.facades);
+    chips('أماكن خاصة', H.places);
+    if (H.none) extra.appendChild(h('div', { class: 'muted', style: 'margin-top:6px', text: 'غير مصنّف (بدون دور ولا زون): ' + H.none }));
+    card.appendChild(extra);
+    card.appendChild(h('div', { class: 'muted', style: 'margin-top:8px;font-size:13px', text: 'كل خلية = عدد التصاريح اللي انفتحت بهذا الدور والزون خلال ' + dashWord + '، وكل ما غمق اللون زاد الضغط. التصريح اللي يغطي أكثر من دور أو زون ينحسب تحت كل واحد منهم، فالمجموع ممكن يكون أكبر من عدد التصاريح.' }));
+    return card;
+  }
+
   var dashWord = 'اليوم';  // كلمة الفترة بالنصوص (اليوم/الأسبوع/الشهر)
-  var WEEK_START = 0;     // نفس APPDASH_WEEK_START_ بالخادم: 0=الأحد
+  var WEEK_START = 6;     // نفس APPDASH_WEEK_START_ بالخادم: 6=السبت (الجمعة راحة)
   var DAY_MEM = {};   // كاش جلسة لأيام سابقة (التنقل ذهاب وإياب يصير فوري)
 
   function weekStartC(ds) { var p = ds.split('-'), dow = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]), 12).getDay(); return shiftDay(ds, -((dow - WEEK_START + 7) % 7)); }
@@ -1098,6 +1161,7 @@
       }
       body.appendChild(dayCard(Y, 'أمس · ' + dayName(Y.date)));
       chartsCards(T, cur, 'اليوم').forEach(function (c) { body.appendChild(c); });
+      body.appendChild(heatCard(T.heat));
       topsCards(T).forEach(function (c) { body.appendChild(c); });
       body.appendChild(photosCard(T.photos));
       body.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:6px 0 2px' }, 'نفس أرقام لوحة الموقع. العدّ بعدد العمليات المسجّلة.'));
@@ -1137,6 +1201,7 @@
           }), mx)));
       }
       chartsCards(S, -1, word).forEach(function (c) { body.appendChild(c); });
+      body.appendChild(heatCard(S.heat));
       topsCards(S).forEach(function (c) { body.appendChild(c); });
       body.appendChild(photosCard(S.photos));
     }
@@ -1156,6 +1221,7 @@
       countUp(nOpen, S.opened); countUp(nClosed, S.closed); countUp(nAuto, S.stillOpen);
       if (S.opened) body.appendChild(dayCard(S, 'قفل التصاريح', 'اللي ما قفله موظف نهاية هذا اليوم انحسب انقفل تلقائي.'));
       chartsCards(S, -1, 'اليوم').forEach(function (c) { body.appendChild(c); });
+      body.appendChild(heatCard(S.heat));
       topsCards(S).forEach(function (c) { body.appendChild(c); });
       body.appendChild(photosCard(S.photos));
     }
