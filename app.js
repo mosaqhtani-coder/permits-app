@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.11';
+  var APP_VERSION = '1.12';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -997,7 +997,7 @@
     else if (DAY_MEM[date]) cached = DAY_MEM[date].res;
 
     function go(ds) { location.hash = (ds && ds !== serverToday) ? '#/dash/' + ds : '#/dash'; }
-    var body = h('div');
+    var body = h('div', { class: 'dbody' });
     var stamp = h('span', { class: 'muted', text: '' });
     var rbtn = h('button', { class: 'icon-btn rfs', type: 'button', 'aria-label': 'تحديث' }, h('span', { text: '↻' }));
     box.appendChild(h('div', { class: 'dash-head' }, stamp, rbtn));
@@ -1028,7 +1028,6 @@
     function prepPrint() {
       if (opened.length) return;
       box.querySelectorAll('details:not([open])').forEach(function (d) { d.setAttribute('open', ''); opened.push(d); });
-      box.querySelectorAll('.pend[hidden]').forEach(function (p) { p.hidden = false; opened.push(p); });
     }
     function donePrint() {
       opened.forEach(function (n) { if (n.tagName === 'DETAILS') n.removeAttribute('open'); else n.hidden = true; });

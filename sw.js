@@ -1,8 +1,8 @@
-// خدمة الكاش v1.11: نخزّن هيكل التطبيق فقط. طلبات الخادم (script.google.com) ما تمر من هنا أبداً.
+// خدمة الكاش v1.12: نخزّن هيكل التطبيق فقط. طلبات الخادم (script.google.com) ما تمر من هنا أبداً.
 // الاستراتيجية: الملفات المرقّمة (?v=) من الكاش مباشرة (ثابتة لكل نسخة)، صفحة index.html من الشبكة بمهلة قصيرة
 // وبعدها الكاش، وباقي الملفات (أيقونات/manifest) من الكاش مع تحديث بالخلفية.
-var CACHE = 'ptw-app-v1.11';
-var VER = '?v=1.11';
+var CACHE = 'ptw-app-v1.12';
+var VER = '?v=1.12';
 var SHELL = ['./', 'index.html', 'styles.css' + VER, 'app.js' + VER, 'config.js' + VER, 'manifest.webmanifest'];
 var NAV_TIMEOUT = 2500;
 

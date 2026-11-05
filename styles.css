@@ -458,3 +458,15 @@ html[data-theme="lux"] .erow a.en, html[data-theme="lux"] .erow a.tn { color: va
   .pend { max-height: none !important; overflow: visible !important; }
   a { color: #111 !important; text-decoration: none !important; }
 }
+
+/* v1.12: طباعة مضغوطة: عمودين، بدون قائمة "ما قفله موظف" ولا زرها (تطلع مئات الصفحات)، وصفحات بحسب المحتوى */
+@media print {
+  .pend, .ycard .btn, .ycard .btn.ghost { display: none !important; }
+  .dbody { column-count: 2; column-gap: 10px; }
+  .dbody > * { break-inside: avoid; page-break-inside: avoid; }
+  .dbody .card, .dbody .hero { margin-bottom: 8px; padding: 10px; }
+  .dbody .card h2 { font-size: 15px; margin-bottom: 8px; }
+  .dbody .hchart { max-height: 150px; }
+  .dbody .etab .erow, .dbody .trow { padding-top: 4px; padding-bottom: 4px; }
+  body { font-size: 13px; }
+}
