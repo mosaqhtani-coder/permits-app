@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.12';
+  var APP_VERSION = '1.13';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -979,7 +979,8 @@
     }
     if (T.topCompanies && T.topCompanies.length) {
       var mc = T.topCompanies[0].n;
-      out.push(h('section', { class: 'card' }, h('h2', { text: 'أكثر الشركات فتحاً ' + dayWord }),
+      var tc = 0; T.topCompanies.forEach(function (c) { tc += c.n; });
+      out.push(h('section', { class: 'card' }, h('h2', { text: 'الشركات اللي فتحت تصاريح ' + dayWord + ' (' + T.topCompanies.length + ' شركة · ' + tc + ' تصريح)' }),
         barRows(T.topCompanies.map(function (c) { return { name: c.name, value: c.n, parts: [{ cls: 'po', n: c.n }] }; }), mc)));
     }
     return out;
