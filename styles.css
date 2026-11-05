@@ -423,3 +423,38 @@ html[data-theme="lux"] { color-scheme: dark; } html[data-theme="light"] { color-
 .erow .ev { width: 52px; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; flex: none; }
 .erow a.en, .erow a.tn { color: var(--primary); text-decoration: none; }
 html[data-theme="lux"] .erow a.en, html[data-theme="lux"] .erow a.tn { color: var(--accent); }
+
+/* v1.11: زر وطباعة اللوحة */
+.printbtn { margin: 0 0 14px; min-height: 50px; font-size: 17px; }
+.printbtn svg { width: 22px; height: 22px; }
+.printhead { display: none; }
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html[data-theme], html:not([data-theme]) {
+    --bg: #fff; --card: #fff; --text: #111; --muted: #444; --border: #bbb; --primary: #0F7A41; --primary-50: #E6F4EC;
+    --ok: #1B7A43; --ok-50: #E3F3E9; --danger: #B3261E; --danger-50: #FBE9E7; --warn: #7A4A00; --warn-50: #FFF3CC;
+    --signal: #C99700; --accent: #7A5C00; --shadow: none; color-scheme: light;
+  }
+  html, body, html[data-theme] body { background: #fff !important; color: #111 !important; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; animation: none !important; transition: none !important; box-shadow: none !important; backdrop-filter: none !important; text-shadow: none !important; }
+  .topbar, .nav, .datebar, .dash-head, .printbtn, .toast, .sheet-bg, .rfs { display: none !important; }
+  .main { max-width: none; padding: 0; }
+  .printhead { display: block; border-bottom: 2px solid #111; margin-bottom: 10px; padding-bottom: 6px; }
+  .printhead .pht { font-size: 20px; font-weight: 800; color: #111; }
+  .printhead .phs { font-size: 12px; color: #444; }
+  html[data-theme] .card, html[data-theme] .hero, html[data-theme] .tile, html[data-theme] .pitem {
+    background: #fff !important; background-image: none !important; color: #111 !important; border: 1px solid #aaa !important; break-inside: avoid; page-break-inside: avoid;
+  }
+  html[data-theme] .card h2, html[data-theme] .hero *, html[data-theme] .card .tv, html[data-theme] .card .tn, html[data-theme] .card .k, html[data-theme] .card .v { color: #111 !important; }
+  html[data-theme] .hero::after, html[data-theme] .hero::before { display: none; }
+  html[data-theme] .kp { background: #f4f4f4 !important; border: 1px solid #bbb !important; }
+  html[data-theme] .kp.o .big { color: #0a6b3a !important; } html[data-theme] .kp.c .big { color: #8a6500 !important; } html[data-theme] .kp .kl { color: #333 !important; }
+  html[data-theme] .rk.r1 { background: #C99700 !important; color: #111 !important; }
+  .bt { background: #e4e4e4 !important; }
+  .po, .bar-o, .lg.o { background: #0F7A41 !important; } .bar-o { fill: #0F7A41 !important; }
+  .pc, .lg.c { background: #C99700 !important; } .bar-c { fill: #C99700 !important; }
+  .ring-fg { stroke: #0F7A41 !important; } .ring-bg { stroke: #ddd !important; }
+  details > :not(summary) { display: block; }
+  .pend { max-height: none !important; overflow: visible !important; }
+  a { color: #111 !important; text-decoration: none !important; }
+}

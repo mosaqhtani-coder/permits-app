@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.10';
+  var APP_VERSION = '1.11';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -48,7 +48,8 @@
     gallery: '<rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-9 9"/>',
     meet: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 6a3 3 0 0 1 0 6M18 14.5c1.8.7 3 2.4 3 5.5"/>',
     report: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>',
-    obs: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>'
+    obs: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
+    print: '<path d="M7 8V3h10v5"/><rect x="4" y="8" width="16" height="9" rx="2"/><path d="M7 14h10v7H7z"/>'
   };
   function icon(name) {
     var s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -1013,6 +1014,30 @@
     todayB.addEventListener('click', function () { go(''); });
     dateIn.addEventListener('change', function () { if (isDateStr(dateIn.value)) go(dateIn.value > serverToday ? serverToday : dateIn.value); });
     box.appendChild(h('div', { class: 'datebar' }, prevB, h('div', { class: 'dmid' }, dateIn, dname), nextB, todayB));
+
+    // طباعة اللوحة: رأس يظهر بالطباعة فقط + زر واضح. قبل الطباعة نفتح كل الأقسام المطوية عشان تطلع كاملة.
+    var phT = h('div', { class: 'pht', text: 'لوحة تصاريح العمل' }), phS = h('div', { class: 'phs', text: '' });
+    box.insertBefore(h('div', { class: 'printhead' }, phT, phS), box.firstChild);
+    function setPH(d) {
+      var ds = d.mode === 'day' ? d.date : (d.date || (d.today && d.today.date)) || '';
+      var n = new Date(), z = function (x) { return (x < 10 ? '0' : '') + x; };
+      phT.textContent = 'لوحة تصاريح العمل - ' + (d.mode === 'day' ? dayName(ds) + ' ' : 'اليوم ') + ds;
+      phS.textContent = 'طُبعت: ' + n.getFullYear() + '-' + z(n.getMonth() + 1) + '-' + z(n.getDate()) + ' ' + z(n.getHours()) + ':' + z(n.getMinutes()) + (S.user ? ' - ' + S.user.name : '');
+    }
+    var opened = [];
+    function prepPrint() {
+      if (opened.length) return;
+      box.querySelectorAll('details:not([open])').forEach(function (d) { d.setAttribute('open', ''); opened.push(d); });
+      box.querySelectorAll('.pend[hidden]').forEach(function (p) { p.hidden = false; opened.push(p); });
+    }
+    function donePrint() {
+      opened.forEach(function (n) { if (n.tagName === 'DETAILS') n.removeAttribute('open'); else n.hidden = true; });
+      opened = [];
+    }
+    var onBP = function () { if (box.isConnected) prepPrint(); }, onAP = function () { donePrint(); };
+    window.addEventListener('beforeprint', onBP); window.addEventListener('afterprint', onAP);
+    var pbtnAll = h('button', { class: 'btn printbtn', type: 'button', onclick: function () { prepPrint(); setTimeout(function () { window.print(); }, 60); } }, icon('print'), 'طباعة اللوحة');
+    box.appendChild(pbtnAll);
     box.appendChild(body);
 
     function skeleton() {
@@ -1073,7 +1098,7 @@
     }
 
     function draw(d, fromCache) {
-      syncBar(d);
+      syncBar(d); setPH(d);
       if (d.mode === 'day') drawDay(d, fromCache); else drawToday(d, fromCache);
     }
 
