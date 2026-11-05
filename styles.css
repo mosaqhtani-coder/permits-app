@@ -412,3 +412,14 @@ html[data-theme="lux"] .pitem { background: rgba(255,255,255,.04); }
 html[data-theme="lux"] ::selection { background: rgba(214,181,101,.35); }
 /* خلفية الإقلاع حتى قبل تحميل الملف الكامل */
 html[data-theme="lux"] { color-scheme: dark; } html[data-theme="light"] { color-scheme: light; }
+
+/* v1.10: جدول الموظفين برفع الصور */
+.etab { margin-top: 4px; }
+.erow { display: flex; align-items: center; gap: 8px; padding: 9px 2px; border-bottom: 1px solid var(--border); }
+.erow:last-child { border-bottom: 0; }
+.erow.eh { font-size: 13px; color: var(--muted); font-weight: 700; padding-top: 2px; }
+.erow .en, .erow .en2 { flex: 1; min-width: 0; font-weight: 700; } .erow .en2 { display: flex; flex-direction: column; }
+.erow .en2 small { font-weight: 400; font-size: 12px; }
+.erow .ev { width: 52px; text-align: center; font-weight: 800; font-variant-numeric: tabular-nums; flex: none; }
+.erow a.en, .erow a.tn { color: var(--primary); text-decoration: none; }
+html[data-theme="lux"] .erow a.en, html[data-theme="lux"] .erow a.tn { color: var(--accent); }

@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.9';
+  var APP_VERSION = '1.10';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -906,8 +906,10 @@
 
   function topsCards(S) {
     var out = [];
-    out.push(h('section', { class: 'card' }, h('h2', { text: 'أكثر 5 موظفين فتحوا تصاريح' }), topList(S.openers, 'تصريح', 'po')));
-    var cl = h('section', { class: 'card' }, h('h2', { text: 'أكثر 5 موظفين أغلقوا تصاريح' }), topList(S.closers, 'تصريح', 'pc'));
+    function sum(l) { var t = 0; (l || []).forEach(function (e) { t += e.n; }); return t; }
+    function ttl(w, l) { return w + (l && l.length ? ' (' + l.length + ' موظف · ' + sum(l) + ' تصريح)' : ''); }
+    out.push(h('section', { class: 'card' }, h('h2', { text: ttl('الموظفين اللي فتحوا تصاريح', S.openers) }), topList(S.openers, 'تصريح', 'po')));
+    var cl = h('section', { class: 'card' }, h('h2', { text: ttl('الموظفين اللي أغلقوا تصاريح', S.closers) }), topList(S.closers, 'تصريح', 'pc'));
     if (S.bulkClosed) cl.appendChild(h('div', { class: 'muted', style: 'margin-top:8px;font-size:13px', text: 'ما يشمل ' + S.bulkClosed + ' إغلاق جماعي بالنظام.' }));
     out.push(cl);
     return out;
@@ -917,8 +919,21 @@
     if (!P || !P.uploads) { card.appendChild(emptyNote('ما فيه رفع صور بهذا اليوم.')); return card; }
     var R = P.sections.rounds;
     card.appendChild(h('div', { class: 'phead' }, h('b', { text: P.uploads }), ' رفعة', R.files ? h('span', { class: 'muted', text: ' · ' + R.files + ' ملف جولات' }) : null));
-    card.appendChild(h('div', { class: 'sub2', text: 'الأكثر مشاركة (عام)' }));
-    card.appendChild(topList(P.top, 'رفعة', 'po'));
+    if (P.byEmp && P.byEmp.length) {
+      card.appendChild(h('div', { class: 'sub2', text: 'كل موظف: عمليات الرفع وعدد الملفات (' + P.byEmp.length + ' موظف · ' + (P.totalFiles || 0) + ' ملف)' }));
+      var adm = has('admin');
+      var tb = h('div', { class: 'etab' }, h('div', { class: 'erow eh' }, h('span', { class: 'en', text: 'الموظف' }), h('span', { class: 'ev', text: 'رفعات' }), h('span', { class: 'ev', text: 'ملفات' })));
+      P.byEmp.forEach(function (e) {
+        var nm = e.name || e.id || '-';
+        var nn = (adm && e.id) ? h('a', { class: 'en tn', href: '#/emp/' + encodeURIComponent(e.id) }, nm) : h('span', { class: 'en', text: nm });
+        var parts = [e.open ? 'فتح ' + e.open : '', e.close ? 'إغلاق ' + e.close : '', e.rounds ? 'جولات ' + e.rounds : ''].filter(Boolean).join(' · ');
+        tb.appendChild(h('div', { class: 'erow' }, h('span', { class: 'en2' }, nn, h('small', { class: 'muted', text: parts })), h('span', { class: 'ev', text: e.uploads }), h('span', { class: 'ev', text: e.files })));
+      });
+      card.appendChild(tb);
+    } else {
+      card.appendChild(h('div', { class: 'sub2', text: 'الأكثر مشاركة (عام)' }));
+      card.appendChild(topList(P.top, 'رفعة', 'po'));
+    }
     card.appendChild(h('div', { class: 'sub2', text: 'الأكثر رفعاً في كل قسم' }));
     var secs = h('div', { class: 'secs' });
     [['open', 'صور فتح التصاريح', P.sections.open], ['close', 'صور إغلاق التصاريح', P.sections.close], ['rounds', 'صور الجولات', R]].forEach(function (s) {
@@ -930,7 +945,7 @@
       R.byType.forEach(function (t) { det.appendChild(h('div', { class: 'secrow' }, h('span', { class: 'k', text: t.type + ' (' + t.total + ')' }), h('span', { class: 'v', text: leadersText(t.leaders) }))); });
       card.appendChild(det);
     }
-    card.appendChild(h('div', { class: 'muted', style: 'margin-top:8px;font-size:13px', text: 'العدّ بعدد الرفعات (رفعة جولات بعدة ملفات تنحسب رفعة وحدة).' }));
+    card.appendChild(h('div', { class: 'muted', style: 'margin-top:8px;font-size:13px', text: 'الرفعة = عملية رفع وحدة. الملفات: بالجولات كل صورة ملف، وبرفع التصاريح الملف المدمج (PDF الصور) + أي مرفقات إضافية (عدد الصور داخل الـPDF المدمج غير مسجّل).' }));
     return card;
   }
   function dayCard(Y, title, sub) {
