@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.15';
+  var APP_VERSION = '1.16';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -49,6 +49,7 @@
     meet: '<circle cx="9" cy="8" r="3"/><path d="M3 20c0-3.3 2.7-5.5 6-5.5s6 2.2 6 5.5"/><path d="M16 6a3 3 0 0 1 0 6M18 14.5c1.8.7 3 2.4 3 5.5"/>',
     report: '<path d="M6 3h9l4 4v14H6z"/><path d="M14 3v5h5M9 13h7M9 17h7"/>',
     obs: '<path d="M12 3l9 16H3z"/><path d="M12 10v4M12 17v.5"/>',
+    find: '<circle cx="11" cy="11" r="7"/><path d="M20 20l-3.6-3.6"/>',
     print: '<path d="M7 8V3h10v5"/><rect x="4" y="8" width="16" height="9" rx="2"/><path d="M7 14h10v7H7z"/>'
   };
   function icon(name) {
@@ -139,6 +140,12 @@
       return res;
     });
   }
+
+  function rcDrop(fn) {
+    try { Object.keys(localStorage).forEach(function (k) { if (k.indexOf(RC_P + fn + ':') === 0) localStorage.removeItem(k); }); } catch (e) {}
+  }
+  /** بعد أي فتح/إغلاق ناجح: القوائم والأرقام المحفوظة صارت قديمة */
+  function opsChanged() { rcDrop('getMyOpenToday'); rcDrop('getMyOpenedPermits'); rcDrop('getMyPageStats'); }
 
   function sessionLost(msg) {
     S.token = ''; S.user = null; lsDel('ptw_token'); lsDel('ptw_user'); rcPurge();
@@ -415,9 +422,12 @@
     } else {
       content.appendChild(h('div', { class: 'msg warn', text: 'ما عندك صفحات مفعّلة بالتطبيق الحين. كلّم المسؤول.' }));
     }
+    var mineSlot = h('div');
+    content.insertBefore(mineSlot, content.children[1]);
     if (has('dashboard')) content.insertBefore(h('a', { class: 'tile wide dashtile', href: '#/dash', style: 'margin-bottom:12px' }, icon('dash'), h('div', null, 'لوحة اليوم', h('small', { text: 'إحصائيات اليوم وتنقل بين الأيام' }))), content.children[1]);
     var extra = [];
     if (has('dashboard')) extra.push(h('a', { class: 'tile', href: '#/gallery' }, icon('gallery'), h('div', null, 'معرض الصور', h('small', { text: 'صور التصاريح والجولات' }))), h('a', { class: 'tile', href: '#/meetings' }, icon('meet'), h('div', null, 'الاجتماعات', h('small', { text: 'محضر جديد وسجل' }))));
+    if (has('search')) extra.unshift(h('a', { class: 'tile', href: '#/find' }, icon('find'), h('div', null, 'بحث عن تصريح', h('small', { text: 'بياناته ومين فتحه وقفله' }))));
     if (has('admin')) extra.push(h('a', { class: 'tile', href: '#/emp' }, icon('report'), h('div', null, 'تقرير موظف', h('small', { text: 'فتح وإغلاق وصور بالشهر' }))), h('a', { class: 'tile', href: '#/obs' }, icon('obs'), h('div', null, 'ملاحظات السلامة', h('small', { text: 'أداء الموظفين' }))));
     if (extra.length) { content.appendChild(h('div', { class: 'sect', text: 'الأدوات الإدارية' })); content.appendChild(h('div', { class: 'tiles' }, extra)); }
     content.appendChild(h('div', { class: 'card' }, h('h2', { text: 'هذا الشهر' }), statsBox));
@@ -435,7 +445,25 @@
           h('div', { class: 'stat' }, h('div', { class: 'n', text: res.permits.closed }), h('div', { class: 'l', text: 'تصاريح أغلقتها' }))));
       });
     } else { statsBox.parentNode.remove(); }
+
+    // v1.16: تصاريحك المفتوحة اليوم (إغلاق بضغطة)
+    if (has('site')) {
+      swr('getMyOpenToday', [], function (res) {
+        if (!mineSlot.isConnected) return;
+        clear(mineSlot);
+        if (!res || !res.ok || !res.permits || !res.permits.length || res.date !== localToday()) return;
+        var n = res.permits.length;
+        mineSlot.appendChild(h('a', { class: 'tile wide closeop', href: '#/site/close', style: 'margin-bottom:12px' }, icon('close'),
+          h('div', null, 'عندك ' + n + (n === 1 ? ' تصريح مفتوح' : ' تصاريح مفتوحة') + ' اليوم', h('small', { text: 'اضغط وأغلقها بضغطة، بدون كتابة الرقم' }))));
+      });
+    }
+    // v1.16: نجهّز لوحة اليوم بالخلفية عشان تفتح فوراً (مرة كل دقيقة بالكثير)
+    if (has('dashboard') && Date.now() - dashWarmAt > 60000) {
+      dashWarmAt = Date.now();
+      call('getAppDashboard', false, '', 'day').then(function (res) { if (res && res.ok && res.mode !== 'day' && res.mode !== 'range') lsSet(DASH_LS, JSON.stringify(res)); });
+    }
   }
+  var dashWarmAt = 0;
 
   // ======================= تسجيل فتح / إغلاق =======================
   var PHOTO_KEYS = [['permit', 'صورة التصريح'], ['hazards', 'خطوات العمل والمخاطر'], ['participants', 'أسماء المشاركين في TBT'], ['tbt', 'TBT'], ['site', 'صورة موقع العمل']];
@@ -475,8 +503,9 @@
       var segOpen = h('button', { type: 'button', class: st.op === 'open' ? 'on' : '' }, 'فتح');
       var segClose = h('button', { type: 'button', class: st.op === 'close' ? 'on close' : '' }, 'إغلاق');
       var go = h('button', { class: 'btn' + (st.op === 'close' ? ' danger' : ''), type: 'button' }, 'متابعة');
+      var mineBox = h('div', { hidden: st.op !== 'close' });
       function setOp(o) {
-        st.op = o;
+        st.op = o; mineBox.hidden = o !== 'close';
         segOpen.className = o === 'open' ? 'on' : ''; segClose.className = o === 'close' ? 'on close' : '';
         go.className = 'btn' + (o === 'close' ? ' danger' : '');
       }
@@ -514,7 +543,45 @@
         h('div', { class: 'field' }, h('label', { for: 'ptw', text: 'رقم التصريح' }), ptwIn),
         h('div', { class: 'field' }, noteIn),
         go, msg, ambig));
-      if (!prefill) setTimeout(function () { try { ptwIn.focus(); } catch (e) {} }, 50);
+      box.appendChild(mineBox);
+      loadMine(mineBox);
+      if (!prefill && st.op !== 'close') setTimeout(function () { try { ptwIn.focus(); } catch (e) {} }, 50);
+    }
+
+    // v1.16: تصاريحي المفتوحة اليوم - إغلاق بضغطة (بدون كتابة الرقم وبدون خطوة المطابقة)
+    function loadMine(host) {
+      swr('getMyOpenToday', [], function (res) {
+        if (!host.isConnected) return;
+        clear(host);
+        if (!res || !res.ok || !res.permits || res.date !== localToday()) return;   // خادم قديم أو خطأ: نخفيها بهدوء
+        host.appendChild(h('div', { class: 'sect', style: 'margin-top:16px', text: 'تصاريحك المفتوحة اليوم (' + res.permits.length + ')' }));
+        if (!res.permits.length) { host.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:10px', text: 'ما عندك تصاريح مفتوحة اليوم.' })); return; }
+        res.permits.forEach(function (p) {
+          host.appendChild(h('button', { class: 'list-item', type: 'button', onclick: function () { quickClose(p); } },
+            h('div', null, h('b', null, ltr(p.ptw)), p.company ? ' - ' + p.company : ''),
+            h('div', { class: 'sub' }, [p.location, ' · فتحته ', ltr(String(p.time).substring(11, 16))])));
+        });
+      });
+    }
+    function quickClose(p) {
+      if (st.busy) return;
+      var noteIn = h('input', { class: 'input', type: 'text', maxlength: '300', placeholder: 'ملاحظة (اختياري)' });
+      openSheet('إغلاق التصريح ' + p.ptw, [
+        { node: h('div', { class: 'details' }, row('التصريح', ltr(p.ptw)), row('الشركة', p.company), row('الموقع', p.location), row('انفتح', ltr(String(p.time).substring(11, 16)))) },
+        { node: h('div', { class: 'field' }, noteIn) },
+        { label: 'اعتماد الإغلاق', danger: true, run: function () {
+          st.busy = true; st.op = 'close'; st.ptw = p.ptw;
+          clear(box); box.appendChild(spinnerBlock('جاري تسجيل الإغلاق...'));
+          call('submitOperation', p.ptw, 'close', noteIn.value.trim()).then(function (res) {
+            st.busy = false;
+            if (!res || !res.ok) {
+              if (res && res.code === 'AUTH') return;
+              step1(''); toast((res && res.message) || 'صار خطأ. حاول مرة ثانية.'); return;
+            }
+            step3(res, []);
+          });
+        } }
+      ]);
     }
 
     function row(k, v) { return h('div', { class: 'drow' }, h('span', { class: 'k', text: k }), h('span', { class: 'v' }, v || '-')); }
@@ -565,7 +632,7 @@
     }
 
     function step3(res, chosen) {
-      clear(box);
+      clear(box); opsChanged();
       var verb = res.op === 'فتح' ? 'فتحت' : 'أغلقت';
       var flagged = res.flags && res.flags.length;
       var result = h('div', { class: 'msg ' + (flagged ? 'warn' : 'ok'), style: 'font-size:16px' });
@@ -582,7 +649,7 @@
       }
       if (res.duplicate) result.appendChild(h('div', { text: '(كانت مسجلة قبل لحظات، ما انسجلت مرة ثانية.)' }));
       var photoStatus = h('div', { hidden: true });
-      var again = h('button', { class: 'btn', type: 'button', onclick: function () { st.ptw = ''; step1(''); } }, 'تسجيل تصريح ثاني');
+      var again = h('button', { class: 'btn', type: 'button', onclick: function () { st.ptw = ''; step1(''); } }, res.op === 'إغلاق' ? 'إغلاق تصريح ثاني' : 'تسجيل تصريح ثاني');
       box.appendChild(h('div', { class: 'card', style: 'text-align:center' },
         h('div', { style: 'font-size:48px', text: flagged ? '⚠️' : '✅' }), result, photoStatus,
         h('div', { style: 'margin-top:16px' }, again)));
@@ -628,10 +695,11 @@
       var list = h('div'); var card = h('div', { class: 'card' }, h('h2', { text: kind === 'open' ? 'اختر التصريح (صور الفتح)' : 'اختر التصريح (صور الإغلاق)' }), list, backBtn(permitsType));
       box.appendChild(card);
       list.appendChild(spinnerBlock('جاري تحميل تصاريحك...'));
-      call('getMyOpenedPermits').then(function (res) {
+      swr('getMyOpenedPermits', [], function (res) {
+        if (!list.isConnected) return;
         clear(list);
         if (!res || !res.ok) { if (res && res.code === 'AUTH') return; list.appendChild(h('div', { class: 'msg err', text: (res && res.message) || 'صار خطأ. حاول مرة ثانية.' })); return; }
-        if (!res.permits.length) { list.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:16px', text: 'ما فيه تصاريح فتحتها لين الحين.' })); return; }
+        if (!res.permits.length) { list.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:16px', text: 'ما فيه تصاريح فتحتها هذا الشهر.' })); return; }
         res.permits.forEach(function (p) {
           list.appendChild(h('button', { class: 'list-item', type: 'button', onclick: function () { uploadForm(kind, p.ptw); } },
             h('div', null, h('b', null, ltr(p.ptw)), p.company ? ' - ' + p.company : ''),
@@ -1156,15 +1224,17 @@
           T.opened ? ('نهاية اليوم اللي ما قفله موظف ينحسب انقفل تلقائي ويبدأ اليوم الجديد من صفر' + (T.flagged ? ' · ' + T.flagged + ' بتنبيه' : '')) : 'ما انفتح شي لين الحين')));
       countUp(nOpen, T.opened); countUp(nClosed, T.closed); countUp(nNow, N.openNow);
 
-      if (N.validNotOpened) {
-        body.appendChild(h('div', { class: 'alerts' }, h('div', { class: 'al' }, h('b', { text: N.validNotOpened }), ' سارية ولم تُفتح اليوم')));
+      if (N.validNotOpened || N.overdue) {
+        body.appendChild(h('div', { class: 'alerts' },
+          N.validNotOpened ? h('div', { class: 'al' }, h('b', { text: N.validNotOpened }), ' سارية ولم تُفتح اليوم') : null,
+          N.overdue ? h('div', { class: 'al' }, h('b', { text: N.overdue }), N.overdueDays ? ' ما قفلها موظف (آخر ' + N.overdueDays + ' أيام)' : ' ما قفلها موظف (أيام سابقة)') : null));
       }
       body.appendChild(dayCard(Y, 'أمس · ' + dayName(Y.date)));
       chartsCards(T, cur, 'اليوم').forEach(function (c) { body.appendChild(c); });
       body.appendChild(heatCard(T.heat));
       topsCards(T).forEach(function (c) { body.appendChild(c); });
       body.appendChild(photosCard(T.photos));
-      body.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:6px 0 2px' }, 'نفس أرقام لوحة الموقع. العدّ بعدد العمليات المسجّلة.'));
+      body.appendChild(h('div', { class: 'muted', style: 'text-align:center;padding:6px 0 2px' }, 'العدّ بعدد العمليات المسجّلة، وكل يوم محسوب بيومه.'));
     }
 
     function rangeLabel(d) {
@@ -1578,6 +1648,53 @@
     });
   }
 
+  // ---------- v1.16: بحث عن تصريح (صلاحية search) ----------
+  function pageFind(q0) {
+    var box = h('div'); shell('home', 'بحث عن تصريح', box);
+    box.appendChild(pageHead('بحث عن تصريح', 'بياناته، حالته، ومين فتحه وقفله', 'r'));
+    var q = h('input', { class: 'input big', type: 'text', autocomplete: 'off', autocapitalize: 'characters', enterkeyhint: 'search', placeholder: 'مثال: 5 أو SEP.5', value: q0 || '' });
+    var go = h('button', { class: 'btn', type: 'button' }, 'بحث'), out = h('div'), busy = false;
+    box.appendChild(h('div', { class: 'card' }, h('div', { class: 'field' }, q), go)); box.appendChild(out);
+    function kv(k, v) { return h('div', { class: 'drow' }, h('span', { class: 'k', text: k }), h('span', { class: 'v' }, v || '-')); }
+    function run() {
+      var v = q.value.trim(); if (!v || busy) return;
+      busy = true; btnBusy(go, true); clear(out); out.appendChild(spinnerBlock('جاري البحث...'));
+      call('searchPermit', v).then(function (r) {
+        busy = false; btnBusy(go, false, 'بحث'); if (!out.isConnected) return; clear(out);
+        if (!r || !r.ok) {
+          if (r && r.code === 'AUTH') return;
+          out.appendChild(h('div', { class: 'msg err', text: (r && r.code === 'API_FN') ? 'النسخة المنشورة من Apps Script قديمة. الصق Api.gs وانشر نسخة جديدة.' : ((r && r.message) || 'ما لقيت التصريح.') }));
+          return;
+        }
+        var i = r.info || {};
+        out.appendChild(h('div', { class: 'card' },
+          h('h2', null, ltr(r.ptw), ' ', h('span', { class: 'badge ' + (r.isOpen ? 'active' : 'unknown'), text: r.isOpen ? 'مفتوح الحين' : 'مو مفتوح' }), ' ',
+            h('span', { class: 'badge ' + (STATUS_AR[r.status] ? r.status : 'unknown'), text: STATUS_AR[r.status] || 'غير معروف' })),
+          r.inRegister ? null : h('div', { class: 'msg warn', style: 'margin-bottom:10px', text: 'التصريح مو موجود بالسجل الحالي، البيانات من سجل العمليات.' }),
+          h('div', { class: 'details' }, kv('الشركة', i.company), kv('الفترة', [ltr(i.startDate || '?'), '  إلى  ', ltr(i.endDate || '?')]),
+            kv('الموقع', (i.location || '') + (i.floor ? ' - ' + i.floor : '')), kv('وصف الأعمال', i.description), kv('النوع', i.type),
+            kv('المصدر', i.issuer), kv('المستلم', i.receiver), kv('الجوال', i.phone ? ltr(i.phone) : ''), kv('الوردية', i.shift))));
+        var hist = (r.history || []).slice().reverse();
+        var hc = h('div', { class: 'card' }, h('h2', { text: 'سجل العمليات (' + hist.length + ')' }));
+        if (!hist.length) hc.appendChild(emptyNote('ما فيه عمليات مسجلة على هذا التصريح.'));
+        hist.slice(0, 60).forEach(function (x) {
+          hc.appendChild(h('div', { class: 'rowitem' }, h('span', { class: 'tag', text: x.op }), ' ', h('b', { text: x.empName || x.empId || '' }),
+            x.flags ? h('span', { class: 'tag risk', text: x.flags }) : null,
+            h('div', { class: 'muted' }, ltr(x.time), x.note ? ' · ' + x.note : '')));
+        });
+        out.appendChild(hc);
+        if (r.notes && r.notes.length) {
+          var nc = h('div', { class: 'card' }, h('h2', { text: 'ملاحظات المشرفين (' + r.notes.length + ')' }));
+          r.notes.slice().reverse().forEach(function (n) { nc.appendChild(h('div', { class: 'rowitem' }, h('div', { text: n.text }), h('div', { class: 'muted' }, (n.empName || '') + ' · ', ltr(n.time)))); });
+          out.appendChild(nc);
+        }
+      });
+    }
+    go.addEventListener('click', run);
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
+    if (q0) run(); else setTimeout(function () { try { q.focus(); } catch (e) {} }, 50);
+  }
+
   // ======================= التوجيه والإقلاع =======================
   function route() {
     if (!apiBase()) return renderSetup(false);
@@ -1589,6 +1706,8 @@
     if (key === 'dash' && !has('dashboard')) key = 'home';
     if ((key === 'gallery' || key === 'meetings') && !has('dashboard')) key = 'home';
     if ((key === 'emp' || key === 'obs') && !has('admin')) key = 'home';
+    if (key === 'find' && !has('search')) key = 'home';
+    if (key === 'find') return pageFind(parts[1] ? decodeURIComponent(parts[1]) : '');
     if (key === 'gallery') return pageGallery();
     if (key === 'meetings') return pageMeetings(parts[1]);
     if (key === 'emp') return pageEmpReport(parts[1] ? decodeURIComponent(parts[1]) : '');
