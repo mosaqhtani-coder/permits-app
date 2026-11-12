@@ -2,7 +2,7 @@
 (function () {
   'use strict';
 
-  var APP_VERSION = '1.16';
+  var APP_VERSION = '1.17';
   var root = document.getElementById('root');
 
   // ======================= أدوات عامة =======================
@@ -427,7 +427,7 @@
     if (has('dashboard')) content.insertBefore(h('a', { class: 'tile wide dashtile', href: '#/dash', style: 'margin-bottom:12px' }, icon('dash'), h('div', null, 'لوحة اليوم', h('small', { text: 'إحصائيات اليوم وتنقل بين الأيام' }))), content.children[1]);
     var extra = [];
     if (has('dashboard')) extra.push(h('a', { class: 'tile', href: '#/gallery' }, icon('gallery'), h('div', null, 'معرض الصور', h('small', { text: 'صور التصاريح والجولات' }))), h('a', { class: 'tile', href: '#/meetings' }, icon('meet'), h('div', null, 'الاجتماعات', h('small', { text: 'محضر جديد وسجل' }))));
-    if (has('search')) extra.unshift(h('a', { class: 'tile', href: '#/find' }, icon('find'), h('div', null, 'بحث عن تصريح', h('small', { text: 'بياناته ومين فتحه وقفله' }))));
+    if (has('search')) extra.unshift(h('a', { class: 'tile', href: '#/find' }, icon('find'), h('div', null, 'الاستعلام عن تصريح', h('small', { text: 'بياناته وكم يوم انفتح ومين فتحه وقفله' }))));
     if (has('admin')) extra.push(h('a', { class: 'tile', href: '#/emp' }, icon('report'), h('div', null, 'تقرير موظف', h('small', { text: 'فتح وإغلاق وصور بالشهر' }))), h('a', { class: 'tile', href: '#/obs' }, icon('obs'), h('div', null, 'ملاحظات السلامة', h('small', { text: 'أداء الموظفين' }))));
     if (extra.length) { content.appendChild(h('div', { class: 'sect', text: 'الأدوات الإدارية' })); content.appendChild(h('div', { class: 'tiles' }, extra)); }
     content.appendChild(h('div', { class: 'card' }, h('h2', { text: 'هذا الشهر' }), statsBox));
@@ -1648,51 +1648,101 @@
     });
   }
 
-  // ---------- v1.16: بحث عن تصريح (صلاحية search) ----------
+  // ---------- v1.17: الاستعلام عن تصريح (صلاحية search: مشرف + مدير). قراءة فقط، على السجل كامل ----------
   function pageFind(q0) {
-    var box = h('div'); shell('home', 'بحث عن تصريح', box);
-    box.appendChild(pageHead('بحث عن تصريح', 'بياناته، حالته، ومين فتحه وقفله', 'r'));
+    var box = h('div'); shell('home', 'الاستعلام عن تصريح', box);
+    box.appendChild(pageHead('الاستعلام عن تصريح', 'بياناته، كم يوم انفتح، ومين فتحه ومين قفله', 'r'));
     var q = h('input', { class: 'input big', type: 'text', autocomplete: 'off', autocapitalize: 'characters', enterkeyhint: 'search', placeholder: 'مثال: 5 أو SEP.5', value: q0 || '' });
-    var go = h('button', { class: 'btn', type: 'button' }, 'بحث'), out = h('div'), busy = false;
+    var go = h('button', { class: 'btn', type: 'button' }, 'استعلام'), out = h('div'), busy = false;
     box.appendChild(h('div', { class: 'card' }, h('div', { class: 'field' }, q), go)); box.appendChild(out);
     function kv(k, v) { return h('div', { class: 'drow' }, h('span', { class: 'k', text: k }), h('span', { class: 'v' }, v || '-')); }
-    function run() {
-      var v = q.value.trim(); if (!v || busy) return;
-      busy = true; btnBusy(go, true); clear(out); out.appendChild(spinnerBlock('جاري البحث...'));
-      call('searchPermit', v).then(function (r) {
-        busy = false; btnBusy(go, false, 'بحث'); if (!out.isConnected) return; clear(out);
-        if (!r || !r.ok) {
-          if (r && r.code === 'AUTH') return;
-          out.appendChild(h('div', { class: 'msg err', text: (r && r.code === 'API_FN') ? 'النسخة المنشورة من Apps Script قديمة. الصق Api.gs وانشر نسخة جديدة.' : ((r && r.message) || 'ما لقيت التصريح.') }));
-          return;
-        }
-        var i = r.info || {};
-        out.appendChild(h('div', { class: 'card' },
-          h('h2', null, ltr(r.ptw), ' ', h('span', { class: 'badge ' + (r.isOpen ? 'active' : 'unknown'), text: r.isOpen ? 'مفتوح الحين' : 'مو مفتوح' }), ' ',
-            h('span', { class: 'badge ' + (STATUS_AR[r.status] ? r.status : 'unknown'), text: STATUS_AR[r.status] || 'غير معروف' })),
-          r.inRegister ? null : h('div', { class: 'msg warn', style: 'margin-bottom:10px', text: 'التصريح مو موجود بالسجل الحالي، البيانات من سجل العمليات.' }),
-          h('div', { class: 'details' }, kv('الشركة', i.company), kv('الفترة', [ltr(i.startDate || '?'), '  إلى  ', ltr(i.endDate || '?')]),
-            kv('الموقع', (i.location || '') + (i.floor ? ' - ' + i.floor : '')), kv('وصف الأعمال', i.description), kv('النوع', i.type),
-            kv('المصدر', i.issuer), kv('المستلم', i.receiver), kv('الجوال', i.phone ? ltr(i.phone) : ''), kv('الوردية', i.shift))));
-        var hist = (r.history || []).slice().reverse();
-        var hc = h('div', { class: 'card' }, h('h2', { text: 'سجل العمليات (' + hist.length + ')' }));
-        if (!hist.length) hc.appendChild(emptyNote('ما فيه عمليات مسجلة على هذا التصريح.'));
-        hist.slice(0, 60).forEach(function (x) {
-          hc.appendChild(h('div', { class: 'rowitem' }, h('span', { class: 'tag', text: x.op }), ' ', h('b', { text: x.empName || x.empId || '' }),
-            x.flags ? h('span', { class: 'tag risk', text: x.flags }) : null,
-            h('div', { class: 'muted' }, ltr(x.time), x.note ? ' · ' + x.note : '')));
+    function who(e) { return e ? [h('b', { text: e.empName || e.empId || '-' }), e.empId ? h('span', { class: 'muted', text: ' (' + e.empId + ')' }) : null] : '-'; }
+    function dur(m) { if (m === null || m === undefined) return ''; var hh = Math.floor(m / 60), mm = m % 60; return (hh ? hh + ' س ' : '') + mm + ' د'; }
+    function people(list, withDays) {
+      if (!list || !list.length) return h('div', { class: 'muted', text: '-' });
+      return h('div', null, list.map(function (p) {
+        return h('div', { class: 'rowitem' }, who(p), ' ', h('span', { class: 'tag', text: p.count + (withDays ? ' فتحة / ' + (p.days || 0) + ' يوم' : ' مرة') }));
+      }));
+    }
+    function fail(r) {
+      if (r && r.code === 'AUTH') return;
+      out.appendChild(h('div', { class: 'msg err', text: (r && r.code === 'API_FN') ? 'النسخة المنشورة من Apps Script قديمة. الصق Api.gs وانشر نسخة جديدة.' : ((r && r.message) || 'ما لقيت التصريح.') }));
+    }
+    function pick(r) {
+      out.appendChild(h('div', { class: 'card' }, h('h2', { text: 'اختر التصريح' }), h('div', { class: 'muted', style: 'margin-bottom:8px', text: r.message || '' }),
+        (r.candidates || []).map(function (c) {
+          return h('button', { class: 'btn ghost', type: 'button', style: 'margin-bottom:8px;text-align:right', onclick: function () { run(c.ptw); } },
+            ltr(c.ptw), ' · ' + (c.company || ''), h('div', { class: 'muted' }, (c.location || '') + (c.startDate ? ' · ' : ''), c.startDate ? ltr(c.startDate + ' → ' + c.endDate) : ''));
+        })));
+    }
+    function show(r) {
+      var i = r.info || {}, s = r.summary || {};
+      out.appendChild(h('div', { class: 'card' },
+        h('h2', null, ltr(r.ptw), ' ', h('span', { class: 'badge ' + (STATUS_AR[r.status] ? r.status : 'unknown'), text: STATUS_AR[r.status] || 'غير معروف' }), ' ',
+          s.openNow ? h('span', { class: 'badge active', text: 'مفتوح الحين' }) : null),
+        r.inRegister ? null : h('div', { class: 'msg warn', style: 'margin-bottom:10px', text: 'التصريح مو موجود بالسجل الحالي، البيانات من سجل العمليات.' }),
+        h('div', { class: 'details' }, kv('الشركة', i.company), kv('الفترة', [ltr(i.startDate || '?'), '  إلى  ', ltr(i.endDate || '?')]),
+          kv('الموقع', (i.location || '') + (i.floor ? ' - ' + i.floor : '')), kv('وصف الأعمال', i.description), kv('النوع', i.type),
+          kv('المصدر', i.issuer), kv('المستلم', i.receiver), kv('الجوال', i.phone ? ltr(i.phone) : ''), kv('الوردية', i.shift))));
+
+      out.appendChild(h('div', { class: 'stats' },
+        h('div', { class: 'stat' }, h('div', { class: 'n', text: String(s.openedDays || 0) }), h('div', { class: 'l', text: 'يوم انفتح فيه' })),
+        h('div', { class: 'stat' }, h('div', { class: 'n', text: String(s.totalOpens || 0) }), h('div', { class: 'l', text: 'عملية فتح' })),
+        h('div', { class: 'stat wide' }, h('div', { class: 'l' }, 'أول فتح: ', s.firstOpen ? ltr(s.firstOpen) : '-', '   آخر فتح: ', s.lastOpen ? ltr(s.lastOpen) : '-'))));
+
+      out.appendChild(h('div', { class: 'card' }, h('h2', { text: 'مين تابعه (فتح)' }), people(s.openers, true)));
+      out.appendChild(h('div', { class: 'card' }, h('h2', { text: 'مين أغلقه' }), people(s.closers, false),
+        s.autoClosedDays ? h('div', { class: 'muted', style: 'margin-top:8px', text: s.autoClosedDays + ' يوم انقفل تلقائياً نهاية اليوم بدون موظف.' }) : null));
+
+      var dc = h('div', { class: 'card' }, h('h2', { text: 'تفصيل الأيام (' + (r.days || []).length + ')' }));
+      if (!(r.days || []).length) dc.appendChild(emptyNote('ما انفتح هذا التصريح بالنظام.'));
+      (r.days || []).slice().reverse().forEach(function (d) {
+        var st = d.state === 'closed' ? h('span', null, 'أغلقه ', who(d.closedBy), ' ', ltr(String((d.closedBy && d.closedBy.time) || '').substring(11)))
+          : d.state === 'open' ? h('span', { class: 'tag', text: 'مفتوح الحين' }) : h('span', { class: 'tag', text: 'إغلاق تلقائي' });
+        dc.appendChild(h('div', { class: 'rowitem' }, h('b', null, ltr(d.date)), d.opensCount > 1 ? h('span', { class: 'tag', text: 'فُتح ' + d.opensCount + ' مرات' }) : null,
+          h('div', null, 'فتحه ', who(d.openedBy), ' ', ltr(String((d.openedBy && d.openedBy.time) || '').substring(11))),
+          h('div', null, st, d.minutes !== null && d.minutes !== undefined ? h('span', { class: 'muted', text: ' · المدة ' + dur(d.minutes) }) : null)));
+      });
+      out.appendChild(dc);
+
+      var hist = (r.history || []).slice().reverse();
+      var hc = h('div', { class: 'card' }, h('h2', { text: 'السجل الكامل (' + hist.length + ')' }));
+      if (!hist.length) hc.appendChild(emptyNote('ما فيه عمليات مسجلة على هذا التصريح.'));
+      hist.slice(0, 80).forEach(function (x) {
+        hc.appendChild(h('div', { class: 'rowitem' }, h('span', { class: 'tag', text: x.op }), ' ', h('b', { text: x.empName || x.empId || '' }),
+          x.flags ? h('span', { class: 'tag risk', text: x.flags }) : null,
+          h('div', { class: 'muted' }, ltr(x.time), x.note ? ' · ' + x.note : '')));
+      });
+      out.appendChild(hc);
+
+      if (r.photos && r.photos.length) {
+        var pc = h('div', { class: 'card' }, h('h2', { text: 'الصور المرفوعة (' + r.photos.length + ')' }));
+        r.photos.forEach(function (p) {
+          var ok = /^https?:\/\//i.test(String(p.url || ''));
+          pc.appendChild(h('div', { class: 'rowitem' }, h('span', { class: 'tag', text: p.kind }), ' ', h('b', { text: p.empName || p.empId || '' }),
+            h('div', { class: 'muted' }, ltr(p.time), ok ? [' · ', h('a', { href: p.url, target: '_blank', rel: 'noopener', text: 'فتح الملف' })] : '')));
         });
-        out.appendChild(hc);
-        if (r.notes && r.notes.length) {
-          var nc = h('div', { class: 'card' }, h('h2', { text: 'ملاحظات المشرفين (' + r.notes.length + ')' }));
-          r.notes.slice().reverse().forEach(function (n) { nc.appendChild(h('div', { class: 'rowitem' }, h('div', { text: n.text }), h('div', { class: 'muted' }, (n.empName || '') + ' · ', ltr(n.time)))); });
-          out.appendChild(nc);
-        }
+        out.appendChild(pc);
+      }
+      if (r.notes && r.notes.length) {
+        var nc = h('div', { class: 'card' }, h('h2', { text: 'ملاحظات المشرفين (' + r.notes.length + ')' }));
+        r.notes.slice().reverse().forEach(function (n) { nc.appendChild(h('div', { class: 'rowitem' }, h('div', { text: n.text }), h('div', { class: 'muted' }, (n.empName || '') + ' · ', ltr(n.time)))); });
+        out.appendChild(nc);
+      }
+    }
+    function run(choice) {
+      var v = q.value.trim(); if ((!v && !choice) || busy) return;
+      busy = true; btnBusy(go, true); clear(out); out.appendChild(spinnerBlock('جاري الاستعلام...'));
+      call('permitInquiry', v, choice || '').then(function (r) {
+        busy = false; btnBusy(go, false, 'استعلام'); if (!out.isConnected) return; clear(out);
+        if (r && r.ambiguous) return pick(r);
+        if (!r || !r.ok) return fail(r);
+        show(r);
       });
     }
-    go.addEventListener('click', run);
-    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(); });
-    if (q0) run(); else setTimeout(function () { try { q.focus(); } catch (e) {} }, 50);
+    go.addEventListener('click', function () { run(''); });
+    q.addEventListener('keydown', function (e) { if (e.key === 'Enter') run(''); });
+    if (q0) run(''); else setTimeout(function () { try { q.focus(); } catch (e) {} }, 50);
   }
 
   // ======================= التوجيه والإقلاع =======================
